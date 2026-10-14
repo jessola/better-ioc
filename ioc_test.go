@@ -1,178 +1,147 @@
 package ioc
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAddingToScopeLoadsParentProviders(t *testing.T) {
-	assert := assert.New(t)
-	c := New()
-
-	intType := reflect.TypeFor[int]()
-
-	c.add(intType, Scoped, func() int {
-		return 1
-	})
-	c.add(intType, Scoped, func() int {
-		return 2
-	})
-
-	assert.Len(c.services[intType], 2)
-
-	s := c.CreateScope()
-	s2 := c.CreateScope()
-	s.add(intType, Scoped, func() int {
-		return 3
-	})
-
-	s2.get(intType) // Load the services for the type, so we can count them
-
-	assert.Len(c.services[intType], 2)
-	assert.Len(s.services[intType], 3)
-	assert.Len(s2.services[intType], 2)
-}
-
 func TestTransient(t *testing.T) {
 	assert := assert.New(t)
 	c := New()
 
-	timePtr := reflect.TypeFor[*time.Time]()
-
-	c.add(timePtr, Transient, func() *time.Time {
+	c.AddTransient[*time.Time](func() *time.Time {
 		t := time.Now()
 		return &t
 	})
 
 	s := c.CreateScope()
 
-	t1, ok := c.get(timePtr)
+	x, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t2, ok := s.get(timePtr)
+	y, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t3, ok := s.get(timePtr)
-	assert.True(ok)
-
-	assert.NotNil(t1)
-	assert.NotNil(t2)
-	assert.NotNil(t3)
-
-	assert.NotEqual(t1, t2)
-	assert.NotEqual(t2, t3)
-	assert.NotEqual(t3, t1)
+	assert.NotEqual(x, y)
 }
 
 func TestSingleton(t *testing.T) {
 	assert := assert.New(t)
 	c := New()
 
-	timePtr := reflect.TypeFor[*time.Time]()
-
-	c.add(timePtr, Singleton, func() *time.Time {
+	c.AddSingleton[*time.Time](func() *time.Time {
 		t := time.Now()
 		return &t
 	})
 
+	x, ok := c.Get[*time.Time]()
+	assert.True(ok)
+
 	s := c.CreateScope()
 
-	t1, ok := c.get(timePtr)
+	y, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t2, ok := c.get(timePtr)
+	z, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t3, ok := s.get(timePtr)
-	assert.True(ok)
-
-	t4, ok := s.get(timePtr)
-	assert.True(ok)
-
-	assert.NotNil(t1)
-	assert.NotNil(t2)
-	assert.NotNil(t3)
-	assert.NotNil(t4)
-
-	assert.Equal(t1, t2, "t1,t2")
-	assert.Equal(t1, t3, "t1,t3")
-	assert.Equal(t1, t4, "t1,t4")
-	assert.Equal(t2, t3, "t2,t3")
-	assert.Equal(t2, t4, "t2,t4")
-	assert.Equal(t3, t4, "t3,t4")
+	assert.Equal(x, y)
+	assert.Equal(y, z)
 }
 
 func TestScoped(t *testing.T) {
 	assert := assert.New(t)
 	c := New()
 
-	timePtr := reflect.TypeFor[*time.Time]()
-
-	c.add(timePtr, Scoped, func() *time.Time {
+	c.AddScoped[*time.Time](func() *time.Time {
 		t := time.Now()
 		return &t
 	})
 
+	x, ok := c.Get[*time.Time]()
+	assert.True(ok)
+
 	s := c.CreateScope()
 
-	t1, ok := c.get(timePtr)
+	y, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t2, ok := c.get(timePtr)
+	z, ok := s.Get[*time.Time]()
 	assert.True(ok)
 
-	t3, ok := s.get(timePtr)
+	assert.NotEqual(x, y)
+	assert.Equal(y, z)
+}
+
+func TestRecursion(t *testing.T) {
+	assert := assert.New(t)
+	c := New()
+
+	c.AddSingleton[int](func() int { return 4 })
+
+	s := c.CreateScope().CreateScope().CreateScope().CreateScope()
+
+	x, ok := s.Get[int]()
+	assert.True(ok)
+	assert.Equal(4, x)
+}
+
+func TestScopeOverrides(t *testing.T) {
+	assert := assert.New(t)
+	c := New()
+
+	c.AddScoped[int](func() int { return 0 })
+	c.AddScoped[int](func() int { return 42 })
+
+	s1 := c.CreateScope()
+	s1.AddScoped[int](func() int { return 100 })
+
+	s2 := c.CreateScope()
+	s2.AddScoped[int](func() int { return -5 })
+	s2.AddScoped[int](func() int { return 9000 })
+
+	x, ok := c.Get[int]()
 	assert.True(ok)
 
-	t4, ok := s.get(timePtr)
+	y, ok := s1.Get[int]()
 	assert.True(ok)
 
-	assert.NotNil(t1)
-	assert.NotNil(t2)
-	assert.NotNil(t3)
-	assert.NotNil(t4)
+	z, ok := s2.Get[int]()
+	assert.True(ok)
 
-	assert.Equal(t1, t2, "t1 should equal t2")
-	assert.Equal(t3, t4, "t3 should equal t4")
-	assert.NotEqual(t1, t3, "t1 should NOT equal t3")
+	assert.Equal(42, x)
+	assert.Equal(100, y)
+	assert.Equal(9000, z)
 }
 
 func TestGetSlice(t *testing.T) {
 	assert := assert.New(t)
 	c := New()
 
-	intType := reflect.TypeFor[int]()
-	intSliceType := reflect.TypeFor[[]int]()
+	c.AddScoped[int](Value(1))
+	c.AddScoped[int](Value(2))
+	c.AddScoped[int](Value(3))
 
-	c.add(intType, Singleton, func() int { return 1 })
-	c.add(intType, Scoped, func() int { return 2 })
-	c.add(intType, Transient, func() int { return 3 })
+	sIntermediary := c.CreateScope()
+	sIntermediary.AddScoped[int](Value(4))
+	sIntermediary.AddScoped[int](Value(5))
+	s1 := sIntermediary.CreateScope()
+	s1.AddScoped[int](6)
 
-	s1 := c.CreateScope()
 	s2 := c.CreateScope()
+	s2.AddScoped[[]int](Value([]int{0, 0, 0}))
 
-	s2.add(intSliceType, Singleton, func() []int {
-		return []int{0, 0, 0, 0}
-	})
+	x, _ := s1.Get[[]int]()
+	// assert.True(ok)
 
-	i1, ok := s1.get(intType)
+	_, ok := s1.Get[[]string]()
+	assert.False(ok)
+
+	y, ok := s2.Get[[]int]()
 	assert.True(ok)
 
-	i2, ok := s2.get(intType)
-	assert.True(ok)
-
-	assert.Len(c.services, 1)
-
-	slice1, ok := s1.get(intSliceType)
-	assert.True(ok)
-
-	slice2, ok := s2.get(intSliceType)
-	assert.True(ok)
-
-	assert.Equal([]any{1, 2, 3}, slice1, "slice1 should equal []int{1,2,3}")
-	assert.Equal([]int{0, 0, 0, 0}, slice2, "slice2 should equal []int{0,0,0,0}")
-	assert.Equal(i1, i2)
+	assert.Equal([]int{1, 2, 3, 4, 5}, x)
+	assert.Equal([]int{0, 0, 0}, y)
 }

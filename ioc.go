@@ -5,199 +5,198 @@ import (
 	"reflect"
 )
 
-const (
-	Singleton Scope = iota
-	Transient
-	Scoped
-)
-
-type Scope int
-
-type providerFunc func(*Container) any
-
 type service struct {
-	Scope   Scope
-	Provide providerFunc
+	Create func(*Container) any
+}
+
+type ErrNotAFunc struct {
+	t reflect.Type
 }
 
 type Container struct {
-	parent   *Container
-	services map[reflect.Type][]service
-	cache    map[reflect.Value]any
-	nameMap  map[string]service
+	parent    *Container
+	providers map[reflect.Type][]service
+	cache     map[any]any
 }
 
 func New() *Container {
 	return &Container{
-		services: make(map[reflect.Type][]service),
-		cache:    make(map[reflect.Value]any),
-		nameMap:  map[string]service{},
+		providers: map[reflect.Type][]service{},
+		cache:     make(map[any]any),
 	}
+}
+
+func (err ErrNotAFunc) Error() string {
+	return fmt.Sprintf("%s is not a func", err.t.String())
 }
 
 func (c *Container) CreateScope() *Container {
-	s := New()
-	s.parent = c
-	return s
+	child := New()
+	child.parent = c
+	return child
 }
 
-func (c *Container) add(t reflect.Type, scope Scope, fn any) error {
-	// Preload parent's services
-	// Important to PRE-load not just load, so newer services take priority
-	if c.services[t] == nil && c.parent != nil && c.parent.services[t] != nil {
-		for _, svc := range c.parent.services[t] {
-			appendToSliceInMap(c.services, t, svc)
-		}
-	}
-
-	fnType := reflect.TypeOf(fn)
-	fnVal := reflect.ValueOf(fn)
-
-	appendToSliceInMap(c.services, t, service{
-		Scope: scope,
-		Provide: func(c *Container) any {
-			deps := make([]reflect.Value, fnType.NumIn())
-			for i := range fnType.NumIn() {
-				svc, ok := c.get(fnType.In(i))
-				if !ok {
-					panic(fmt.Errorf("no service with type %s", fnType.In(i).String()))
-				}
-				deps = append(deps, reflect.ValueOf(svc))
-			}
-			return fnVal.Call(deps)[0].Interface()
-		},
-	})
+func (c *Container) Close() error {
 	return nil
 }
 
-func (c *Container) get(t reflect.Type) (v any, ok bool) {
-	// Preload services
-	if c.services[t] == nil && c.parent != nil && c.parent.services[t] != nil {
-		c.services[t] = c.parent.services[t]
-	}
+func (c *Container) Get[T any]() (v T, ok bool) {
+	t := reflect.TypeFor[T]()
 
-	// Dynamically provide a slice of each registered provider for a type
-	// unless the slice of a type is already directly registered
-	if t.Kind() == reflect.Slice {
-		if _, exists := c.services[t]; !exists {
-			vals := []any{}
-			elemType := t.Elem()
+	provider, ok := c.chooseDefaultProvider(t)
+	if !ok && t.Kind() == reflect.Slice {
+		var providers []service
+		elemType := t.Elem()
 
-			services, ok := c.services[elemType]
-			if !ok || len(services) == 0 {
-				return nil, false
-			}
-
-			for _, service := range services {
-
-				switch service.Scope {
-				case Singleton:
-					providerVal := reflect.ValueOf(service.Provide)
-					// Check local cache
-					if val, exists := c.cache[providerVal]; exists {
-						vals = append(vals, val)
-						continue
-					}
-
-					if c.parent != nil {
-						// Check parent cache
-						if val, exists := c.parent.cache[providerVal]; exists {
-							vals = append(vals, val)
-							// Set local cache
-							c.cache[providerVal] = val
-							continue
-						}
-
-						val := service.Provide(c.parent)
-						vals = append(vals, val)
-						// Set parent cache
-						c.parent.cache[providerVal] = val
-						// Set local cache
-						c.cache[providerVal] = val
-					} else {
-						val := service.Provide(c)
-						vals = append(vals, val)
-						// Set local cache
-						c.cache[providerVal] = val
-					}
-				case Scoped:
-					providerVal := reflect.ValueOf(service.Provide)
-					// Check local cache
-					if val, exists := c.cache[providerVal]; exists {
-						vals = append(vals, val)
-						continue
-					}
-
-					val := service.Provide(c)
-					vals = append(vals, val)
-
-					c.cache[providerVal] = val
-				case Transient:
-					val := service.Provide(c)
-					vals = append(vals, val)
-				default:
-					//
-				}
-
-			}
-			// v = vals
-			return vals, true
+		providers = c.getAllProviders(elemType)
+		if len(providers) == 0 {
+			return
 		}
-	}
-	// END OF SLICE LOGIC
 
-	services, ok := c.services[t]
-	if !ok || len(services) == 0 {
+		arr := reflect.MakeSlice(t, 0, len(providers))
+
+		for _, provider := range providers {
+			val := provider.Create(c)
+			arr = reflect.Append(arr, reflect.ValueOf(val))
+		}
+
+		v, ok = arr.Interface().(T)
 		return
 	}
-	service := services[len(services)-1]
 
-	switch service.Scope {
-	case Singleton:
-		providerVal := reflect.ValueOf(service.Provide)
-		// Check local cache
-		if val, exists := c.cache[providerVal]; exists {
-			v = val
-			return
-		}
+	// if !ok {
+	// 	return
+	// }
 
-		if c.parent != nil {
-			// Check parent cache
-			if val, exists := c.parent.cache[providerVal]; exists {
-				v = val
-				// Set local cache
-				c.cache[providerVal] = v
-				return
-			}
+	v, ok = provider.Create(c).(T)
+	return
+}
 
-			v = service.Provide(c.parent)
-			// Set parent cache
-			c.parent.cache[providerVal] = v
-		} else {
-			v = service.Provide(c)
-		}
-		// Set local cache
-		c.cache[providerVal] = v
-	case Scoped:
-		providerVal := reflect.ValueOf(service.Provide)
-		// Check local cache
-		if val, exists := c.cache[providerVal]; exists {
-			v = val
-			return
-		}
-
-		// if c.parent != nil {
-		// 	v = service.Provide(c.parent)
-		// } else {
-		v = service.Provide(c)
-		// }
-		// Set local cache
-		c.cache[providerVal] = v
-	case Transient:
-		v = service.Provide(c)
-	default:
-		//
+func (c *Container) AddSingleton[T any](fn any) error {
+	fnV := reflect.ValueOf(fn)
+	if fnV.Type().Kind() != reflect.Func {
+		return ErrNotAFunc{t: fnV.Type()}
 	}
 
-	return
+	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
+		Create: func(c *Container) any {
+			// Check local cache
+			if v, ok := c.cache[fnV]; ok {
+				return v
+			}
+
+			// Ask parent to create
+			if c.parent != nil {
+				provider, ok := c.parent.chooseDefaultProvider(reflect.TypeFor[T]())
+				if ok {
+					v := provider.Create(c.parent)
+					c.cache[fnV] = v
+					return v
+				}
+			}
+
+			v := mustCall(c, fnV)
+			// Set local cache
+			c.cache[fnV] = v
+			return v
+		},
+	})
+
+	return nil
+}
+
+func (c *Container) AddScoped[T any](fn any) error {
+	fnV := reflect.ValueOf(fn)
+	if fnV.Type().Kind() != reflect.Func {
+		return ErrNotAFunc{t: fnV.Type()}
+	}
+
+	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
+		Create: func(c *Container) any {
+			// Check cache
+			if v, ok := c.cache[fnV]; ok {
+				return v
+			}
+
+			v := mustCall(c, fnV)
+			// Set cache
+			c.cache[fnV] = v
+			return v
+		},
+	})
+
+	return nil
+}
+
+func (c *Container) AddTransient[T any](fn any) error {
+	fnV := reflect.ValueOf(fn)
+	if fnV.Type().Kind() != reflect.Func {
+		return ErrNotAFunc{t: fnV.Type()}
+	}
+
+	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
+		Create: func(c *Container) any {
+			return mustCall(c, fnV)
+		},
+	})
+
+	return nil
+}
+
+func (c *Container) chooseDefaultProvider(t reflect.Type) (service, bool) {
+	if len(c.providers[t]) == 0 {
+		if c.parent == nil {
+			return service{}, false
+		}
+		return c.parent.chooseDefaultProvider(t)
+	} else {
+		services := c.providers[t]
+		return services[len(services)-1], true
+	}
+}
+
+func (c *Container) getAllProviders(t reflect.Type) []service {
+	var appendProviders func(*[]service, *Container)
+	providers := []service{}
+
+	appendProviders = func(providers *[]service, c *Container) {
+		if c.parent != nil {
+			appendProviders(providers, c.parent)
+		}
+		for _, p := range c.providers[t] {
+			*providers = append(*providers, p)
+		}
+	}
+
+	appendProviders(&providers, c)
+
+	return providers
+}
+
+func mustCall(c *Container, fn reflect.Value) any {
+	args := mustGetArgs(c, fn)
+	out := fn.Call(args)
+	return out[0].Interface()
+}
+
+func mustGetArgs(c *Container, fn reflect.Value) []reflect.Value {
+	t := fn.Type()
+	deps := make([]reflect.Value, t.NumIn())
+
+	for i := range t.NumIn() {
+		provider, ok := c.chooseDefaultProvider(t.In(i))
+		if !ok {
+			panic(fmt.Errorf("no provider for type %s", t.In(i).String()))
+		}
+		deps[i] = reflect.ValueOf(provider.Create(c))
+	}
+
+	return deps
+}
+
+func appendToSliceInMap[K comparable, V any](m map[K][]V, k K, v ...V) {
+	if _, exists := m[k]; !exists {
+		m[k] = []V{}
+	}
+	m[k] = append(m[k], v...)
 }
