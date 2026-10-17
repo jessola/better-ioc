@@ -4,7 +4,6 @@
 package ioc
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
 )
@@ -18,6 +17,7 @@ type providerConfig struct {
 	Create func(*Container) any
 }
 
+// Container stores dependency providers and resolves their dependencies.
 type Container struct {
 	parent *Container
 
@@ -31,6 +31,7 @@ type Container struct {
 	uniqueVals map[any]bool
 }
 
+// NewContainer creates a root dependency injection container.
 func NewContainer() *Container {
 	c := &Container{
 		providers:  map[reflect.Type][]providerConfig{},
@@ -44,16 +45,43 @@ func NewContainer() *Container {
 	return c
 }
 
+// CreateScope creates a child container that inherits providers from c.
 func (c *Container) CreateScope() *Container {
 	child := NewContainer()
 	child.parent = c
 	return child
 }
 
+// Close closes c. It currently releases no resources.
 func (c *Container) Close() error {
 	return nil
 }
 
+// MustGet is like Get but panics with ErrNotFound when no matching provider is
+// registered.
+func (c *Container) MustGet[T any]() (v T) {
+	v, ok := c.Get[T]()
+	if !ok {
+		panic(ErrNotFound{t: reflect.TypeFor[T]()})
+	}
+	return
+}
+
+// MustGetNamed is like GetNamed but panics with ErrNotFound when no matching
+// provider is registered.
+func (c *Container) MustGetNamed[T any](name string) (v T) {
+	v, ok := c.GetNamed[T](name)
+	if !ok {
+		panic(ErrNotFound{t: reflect.TypeFor[T]()})
+	}
+	return
+}
+
+// Get resolves the most recently registered provider for T. When T is a slice
+// with no directly registered provider, Get resolves all providers registered
+// for the slice's element type. A provider registered directly for T takes
+// precedence over element-type providers. Get returns false when no matching
+// provider is registered.
 func (c *Container) Get[T any]() (v T, ok bool) {
 	t := reflect.TypeFor[T]()
 
@@ -82,6 +110,8 @@ func (c *Container) Get[T any]() (v T, ok bool) {
 	return
 }
 
+// GetNamed resolves the provider registered for T with name.
+// It returns false when no matching provider is registered.
 func (c *Container) GetNamed[T any](name string) (v T, ok bool) {
 	t := reflect.TypeFor[T]()
 	provider, ok := c.getNamedProvider(t, name)
@@ -141,8 +171,8 @@ func (c *Container) getAllProviders(t reflect.Type) []providerConfig {
 	return providers
 }
 
-func mustCall(c *Container, fn reflect.Value, foobars ...foobar) any {
-	args := mustGetArgs(c, fn, foobars...)
+func mustCall(c *Container, fn reflect.Value, overrides ...override) any {
+	args := mustGetArgs(c, fn, overrides...)
 	out := fn.Call(args)
 	return out[0].Interface()
 }
@@ -152,16 +182,45 @@ func mustCallWithArgs(fn reflect.Value, args []reflect.Value) any {
 	return out[0].Interface()
 }
 
-func mustGetArgs(c *Container, fn reflect.Value, foobars ...foobar) []reflect.Value {
+func mustGetArgs(c *Container, fn reflect.Value, overrides ...override) []reflect.Value {
 	t := fn.Type()
 	deps := make([]reflect.Value, t.NumIn())
+	overrideMap := newOverrideMap(overrides)
 
 	for i := range t.NumIn() {
-		provider, ok := c.getDefaultProvider(t.In(i))
-		if !ok {
-			panic(fmt.Errorf("no provider for type %s", t.In(i).String()))
+		if ovr, ok := overrideMap[i]; ok {
+			// To validate or not to validate, that is the question
+			// if err := x.Validate(); err != nil {
+			//   panic(err)
+			// }
+
+			// TODO: finish logic
+			// TODO: Consider checking the types match, though function panics anyway
+			switch ovr.Kind {
+			case overrideNamed:
+				provider, ok := c.getNamedProvider(ovr.Type, ovr.Name)
+				if !ok {
+					panic(ErrNotFound{t: t.In(i)})
+				}
+				deps[i] = reflect.ValueOf(provider.Create(c))
+			case overrideValue:
+				deps[i] = ovr.Value
+			case overrideFactory:
+				panic("not implemented")
+			default: // overrideBasic
+				provider, ok := c.getDefaultProvider(ovr.Type)
+				if !ok {
+					panic(ErrNotFound{t: t.In(i)})
+				}
+				deps[i] = reflect.ValueOf(provider.Create(c))
+			}
+		} else {
+			provider, ok := c.getDefaultProvider(t.In(i))
+			if !ok {
+				panic(ErrNotFound{t: t.In(i)})
+			}
+			deps[i] = reflect.ValueOf(provider.Create(c))
 		}
-		deps[i] = reflect.ValueOf(provider.Create(c))
 	}
 
 	return deps
