@@ -202,12 +202,14 @@ func listItems(lister ItemLister, w http.ResponseWriter) error {
 }
 
 func main() {
-	c := ioc.DefaultContainer
-	c.AddSingleton[*sqlx.DB](func() *sqlx.DB {
+	// Package-level helpers are shorthand for DefaultContainer methods.
+	// ioc.AddSingleton(...) is equivalent to
+	// ioc.DefaultContainer.AddSingleton(...).
+	ioc.AddSingleton[*sqlx.DB](func() *sqlx.DB {
 		return sqlx.MustConnect("postgres", os.Getenv("DATABASE_URL"))
 	})
-	c.AddScoped[*AppService](newAppService)
-	c.BindScoped[ItemLister, *AppService]()
+	ioc.AddScoped[*AppService](newAppService)
+	ioc.BindScoped[ItemLister, *AppService]()
 
 	http.HandleFunc("/items", handler(listItems))
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -323,3 +325,89 @@ func registerConsumers(
 	}
 }
 ```
+
+## Dispatching application requests
+
+The dispatch package is useful when different transports represent the same
+application action. Define the action once as a request and handler function;
+HTTP and message consumers then only translate their input into that request.
+This example builds on the database and handler/consumer adapters above.
+
+~~~go
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/ThreeDotsLabs/watermill/message"
+	ioc "github.com/jessola/better-ioc"
+	"github.com/jessola/better-ioc/dispatch"
+	"github.com/jmoiron/sqlx"
+)
+
+type CreateItem struct {
+	Name string
+}
+
+type CreateItemResult struct {
+	ID int
+}
+
+func createItem(
+	request CreateItem,
+	db *sqlx.DB,
+) (CreateItemResult, error) {
+	var result CreateItemResult
+	err := db.QueryRowx(
+		"INSERT INTO items (name) VALUES ($1) RETURNING id",
+		request.Name,
+	).Scan(&result.ID)
+	return result, err
+}
+
+func createItemHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+	dispatcher *dispatch.Dispatcher,
+) error {
+	var request CreateItem
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return err
+	}
+
+	result, err := dispatcher.Send[CreateItemResult](request)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(result)
+}
+
+func createItemMessage(
+	msg *message.Message,
+	dispatcher *dispatch.Dispatcher,
+) error {
+	var request CreateItem
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		return err
+	}
+
+	_, err := dispatcher.Send[CreateItemResult](request)
+	return err
+}
+
+// During application startup, after constructing router and subscriber:
+c := ioc.DefaultContainer
+dispatch.AddDispatcher(c)
+dispatch.RegisterHandlerFunc[CreateItem, CreateItemResult](c, createItem)
+
+http.HandleFunc("POST /items", handler(createItemHTTP))
+router.AddConsumerHandler(
+	"create_item",
+	"items.create",
+	subscriber,
+	consumer(createItemMessage),
+)
+~~~
