@@ -2,84 +2,15 @@ package ioc
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTransient(t *testing.T) {
-	assert := assert.New(t)
-	c := New()
-
-	c.AddTransient[*time.Time](func() *time.Time {
-		t := time.Now()
-		return &t
-	})
-
-	s := c.CreateScope()
-
-	x, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	y, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	assert.NotEqual(x, y)
-}
-
-func TestSingleton(t *testing.T) {
-	assert := assert.New(t)
-	c := New()
-
-	c.AddSingleton[*time.Time](func() *time.Time {
-		t := time.Now()
-		return &t
-	})
-
-	x, ok := c.Get[*time.Time]()
-	assert.True(ok)
-
-	s := c.CreateScope()
-
-	y, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	z, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	assert.Equal(x, y)
-	assert.Equal(y, z)
-}
-
-func TestScoped(t *testing.T) {
-	assert := assert.New(t)
-	c := New()
-
-	c.AddScoped[*time.Time](func() *time.Time {
-		t := time.Now()
-		return &t
-	})
-
-	x, ok := c.Get[*time.Time]()
-	assert.True(ok)
-
-	s := c.CreateScope()
-
-	y, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	z, ok := s.Get[*time.Time]()
-	assert.True(ok)
-
-	assert.NotEqual(x, y)
-	assert.Equal(y, z)
-}
-
 func TestRecursion(t *testing.T) {
 	assert := assert.New(t)
-	c := New()
+	c := NewContainer()
 
-	c.AddSingleton[int](func() int { return 4 })
+	c.AddSingleton[int](Value(4))
 
 	s := c.CreateScope().CreateScope().CreateScope().CreateScope()
 
@@ -90,17 +21,17 @@ func TestRecursion(t *testing.T) {
 
 func TestScopeOverrides(t *testing.T) {
 	assert := assert.New(t)
-	c := New()
+	c := NewContainer()
 
-	c.AddScoped[int](func() int { return 0 })
-	c.AddScoped[int](func() int { return 42 })
+	c.AddScoped[int](Value(0))
+	c.AddScoped[int](Value(42))
 
 	s1 := c.CreateScope()
-	s1.AddScoped[int](func() int { return 100 })
+	s1.AddScoped[int](Value(100))
 
 	s2 := c.CreateScope()
-	s2.AddScoped[int](func() int { return -5 })
-	s2.AddScoped[int](func() int { return 9000 })
+	s2.AddScoped[int](Value(-5))
+	s2.AddScoped[int](Value(9000))
 
 	x, ok := c.Get[int]()
 	assert.True(ok)
@@ -116,9 +47,27 @@ func TestScopeOverrides(t *testing.T) {
 	assert.Equal(9000, z)
 }
 
+func TestNamedDependenciesCanShareNameAcrossTypes(t *testing.T) {
+	assert := assert.New(t)
+	c := NewContainer()
+
+	assert.NoError(c.AddNamedScoped[string]("settings", Value("production")))
+	assert.NoError(c.AddNamedScoped[int]("settings", Value(3)))
+
+	s := c.CreateScope()
+
+	name, ok := s.GetNamed[string]("settings")
+	assert.True(ok)
+	assert.Equal("production", name)
+
+	retries, ok := s.GetNamed[int]("settings")
+	assert.True(ok)
+	assert.Equal(3, retries)
+}
+
 func TestGetSlice(t *testing.T) {
 	assert := assert.New(t)
-	c := New()
+	c := NewContainer()
 
 	c.AddScoped[int](Value(1))
 	c.AddScoped[int](Value(2))

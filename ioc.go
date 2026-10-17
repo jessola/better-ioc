@@ -1,37 +1,51 @@
+// Package ioc provides a reflection-based dependency injection container for Go.
+// It uses reflection to resolve dependencies from constructor function parameters
+// at runtime.
 package ioc
 
 import (
 	"fmt"
 	"reflect"
+	"sync"
 )
 
-type service struct {
+type key struct {
+	Name string
+	Type reflect.Type
+}
+
+type providerConfig struct {
 	Create func(*Container) any
 }
 
-type ErrNotAFunc struct {
-	t reflect.Type
-}
-
 type Container struct {
-	parent    *Container
-	providers map[reflect.Type][]service
-	cache     map[any]any
+	parent *Container
+
+	providersMu sync.RWMutex
+	providers   map[reflect.Type][]providerConfig
+
+	cacheMu sync.Mutex
+	cache   map[any]any
+
+	nameMap    map[key]providerConfig
+	uniqueVals map[any]bool
 }
 
-func New() *Container {
-	return &Container{
-		providers: map[reflect.Type][]service{},
-		cache:     make(map[any]any),
+func NewContainer() *Container {
+	c := &Container{
+		providers:  map[reflect.Type][]providerConfig{},
+		cache:      map[any]any{},
+		nameMap:    map[key]providerConfig{},
+		uniqueVals: map[any]bool{},
 	}
-}
 
-func (err ErrNotAFunc) Error() string {
-	return fmt.Sprintf("%s is not a func", err.t.String())
+	c.AddScoped[*Container](Value(c))
+
+	return c
 }
 
 func (c *Container) CreateScope() *Container {
-	child := New()
+	child := NewContainer()
 	child.parent = c
 	return child
 }
@@ -43,9 +57,9 @@ func (c *Container) Close() error {
 func (c *Container) Get[T any]() (v T, ok bool) {
 	t := reflect.TypeFor[T]()
 
-	provider, ok := c.chooseDefaultProvider(t)
+	provider, ok := c.getDefaultProvider(t)
 	if !ok && t.Kind() == reflect.Slice {
-		var providers []service
+		var providers []providerConfig
 		elemType := t.Elem()
 
 		providers = c.getAllProviders(elemType)
@@ -64,102 +78,56 @@ func (c *Container) Get[T any]() (v T, ok bool) {
 		return
 	}
 
-	// if !ok {
-	// 	return
-	// }
-
 	v, ok = provider.Create(c).(T)
 	return
 }
 
-func (c *Container) AddSingleton[T any](fn any) error {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		return ErrNotAFunc{t: fnV.Type()}
+func (c *Container) GetNamed[T any](name string) (v T, ok bool) {
+	t := reflect.TypeFor[T]()
+	provider, ok := c.getNamedProvider(t, name)
+	if !ok {
+		return
 	}
-
-	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
-		Create: func(c *Container) any {
-			// Check local cache
-			if v, ok := c.cache[fnV]; ok {
-				return v
-			}
-
-			// Ask parent to create
-			if c.parent != nil {
-				provider, ok := c.parent.chooseDefaultProvider(reflect.TypeFor[T]())
-				if ok {
-					v := provider.Create(c.parent)
-					c.cache[fnV] = v
-					return v
-				}
-			}
-
-			v := mustCall(c, fnV)
-			// Set local cache
-			c.cache[fnV] = v
-			return v
-		},
-	})
-
-	return nil
+	v, ok = provider.Create(c).(T)
+	return
 }
 
-func (c *Container) AddScoped[T any](fn any) error {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		return ErrNotAFunc{t: fnV.Type()}
-	}
+func (c *Container) getDefaultProvider(t reflect.Type) (providerConfig, bool) {
+	c.providersMu.RLock()
+	defer c.providersMu.RUnlock()
 
-	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
-		Create: func(c *Container) any {
-			// Check cache
-			if v, ok := c.cache[fnV]; ok {
-				return v
-			}
-
-			v := mustCall(c, fnV)
-			// Set cache
-			c.cache[fnV] = v
-			return v
-		},
-	})
-
-	return nil
-}
-
-func (c *Container) AddTransient[T any](fn any) error {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		return ErrNotAFunc{t: fnV.Type()}
-	}
-
-	appendToSliceInMap(c.providers, reflect.TypeFor[T](), service{
-		Create: func(c *Container) any {
-			return mustCall(c, fnV)
-		},
-	})
-
-	return nil
-}
-
-func (c *Container) chooseDefaultProvider(t reflect.Type) (service, bool) {
 	if len(c.providers[t]) == 0 {
 		if c.parent == nil {
-			return service{}, false
+			return providerConfig{}, false
 		}
-		return c.parent.chooseDefaultProvider(t)
+		return c.parent.getDefaultProvider(t)
 	} else {
 		services := c.providers[t]
 		return services[len(services)-1], true
 	}
 }
 
-func (c *Container) getAllProviders(t reflect.Type) []service {
-	var appendProviders func(*[]service, *Container)
-	providers := []service{}
+func (c *Container) getNamedProvider(t reflect.Type, name string) (providerConfig, bool) {
+	provider, ok := c.nameMap[key{Type: t, Name: name}]
+	if ok {
+		return provider, true
+	}
 
-	appendProviders = func(providers *[]service, c *Container) {
+	if c.parent == nil {
+		return providerConfig{}, false
+	}
+
+	return c.parent.getNamedProvider(t, name)
+}
+
+func (c *Container) getAllProviders(t reflect.Type) []providerConfig {
+	c.providersMu.RLock()
+	defer c.providersMu.RUnlock()
+
+	var appendProviders func(*[]providerConfig, *Container)
+	providers := []providerConfig{}
+
+	appendProviders = func(providers *[]providerConfig, c *Container) {
 		if c.parent != nil {
 			appendProviders(providers, c.parent)
 		}
@@ -173,18 +141,23 @@ func (c *Container) getAllProviders(t reflect.Type) []service {
 	return providers
 }
 
-func mustCall(c *Container, fn reflect.Value) any {
-	args := mustGetArgs(c, fn)
+func mustCall(c *Container, fn reflect.Value, foobars ...foobar) any {
+	args := mustGetArgs(c, fn, foobars...)
 	out := fn.Call(args)
 	return out[0].Interface()
 }
 
-func mustGetArgs(c *Container, fn reflect.Value) []reflect.Value {
+func mustCallWithArgs(fn reflect.Value, args []reflect.Value) any {
+	out := fn.Call(args)
+	return out[0].Interface()
+}
+
+func mustGetArgs(c *Container, fn reflect.Value, foobars ...foobar) []reflect.Value {
 	t := fn.Type()
 	deps := make([]reflect.Value, t.NumIn())
 
 	for i := range t.NumIn() {
-		provider, ok := c.chooseDefaultProvider(t.In(i))
+		provider, ok := c.getDefaultProvider(t.In(i))
 		if !ok {
 			panic(fmt.Errorf("no provider for type %s", t.In(i).String()))
 		}
