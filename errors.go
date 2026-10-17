@@ -10,6 +10,9 @@ import (
 // empty or whitespace-only name.
 var ErrNameCannotBeBlank = errors.New("name cannot be blank")
 
+type ErrCouldNotCast struct {
+}
+
 // ErrNotAFunc is returned when a provider is not a function.
 type ErrNotAFunc struct {
 	t reflect.Type
@@ -28,6 +31,11 @@ func (err ErrNotAFunc) Error() string {
 // Error returns the description of err.
 func (err ErrNotFound) Error() string {
 	return fmt.Sprintf("no service with type %s", err.t.String())
+}
+
+// Error returns the description of err.
+func (err ErrCouldNotCast) Error() string {
+	return "could not cast..." // TODO fix this
 }
 
 func NewErrNotAFunc(t reflect.Type) ErrNotAFunc {

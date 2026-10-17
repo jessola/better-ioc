@@ -4,6 +4,7 @@
 package ioc
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -27,17 +28,19 @@ type Container struct {
 	cacheMu sync.Mutex
 	cache   map[any]any
 
-	nameMap    map[key]providerConfig
-	uniqueVals map[any]bool
+	nameMap map[key]providerConfig
+
+	uniqueValMap map[any]bool
+	uniqueVals   []any
 }
 
 // NewContainer creates a root dependency injection container.
 func NewContainer() *Container {
 	c := &Container{
-		providers:  map[reflect.Type][]providerConfig{},
-		cache:      map[any]any{},
-		nameMap:    map[key]providerConfig{},
-		uniqueVals: map[any]bool{},
+		providers:    map[reflect.Type][]providerConfig{},
+		cache:        map[any]any{},
+		nameMap:      map[key]providerConfig{},
+		uniqueValMap: map[any]bool{},
 	}
 
 	c.AddScoped[*Container](Value(c))
@@ -185,7 +188,12 @@ func mustCallWithArgs(fn reflect.Value, args []reflect.Value) any {
 	return out[0].Interface()
 }
 
-func mustGetArgs(c *Container, fn reflect.Value, overrides ...Override) []reflect.Value {
+func callWithArgs(fn reflect.Value, args []reflect.Value) (any, error) {
+	out := fn.Call(args)
+	return out[0].Interface(), nil
+}
+
+func getArgs(c *Container, fn reflect.Value, overrides ...Override) ([]reflect.Value, error) {
 	t := fn.Type()
 	deps := make([]reflect.Value, t.NumIn())
 	overrideMap := newOverrideMap(overrides)
@@ -203,30 +211,38 @@ func mustGetArgs(c *Container, fn reflect.Value, overrides ...Override) []reflec
 			case overrideNamed:
 				provider, ok := c.getNamedProvider(ovr.Type, ovr.Name)
 				if !ok {
-					panic(ErrNotFound{t: t.In(i)})
+					return []reflect.Value{}, ErrNotFound{t: t.In(i)}
 				}
 				deps[i] = reflect.ValueOf(provider.Create(c))
 			case overrideValue:
 				deps[i] = ovr.Value
 			case overrideFactory:
-				panic("not implemented")
+				return []reflect.Value{}, fmt.Errorf("not implemented")
 			default: // overrideBasic
 				provider, ok := c.getDefaultProvider(ovr.Type)
 				if !ok {
-					panic(ErrNotFound{t: t.In(i)})
+					return []reflect.Value{}, ErrNotFound{t: t.In(i)}
 				}
 				deps[i] = reflect.ValueOf(provider.Create(c))
 			}
 		} else {
 			provider, ok := c.getDefaultProvider(t.In(i))
 			if !ok {
-				panic(ErrNotFound{t: t.In(i)})
+				return []reflect.Value{}, ErrNotFound{t: t.In(i)}
 			}
 			deps[i] = reflect.ValueOf(provider.Create(c))
 		}
 	}
 
-	return deps
+	return deps, nil
+}
+
+func mustGetArgs(c *Container, fn reflect.Value, overrides ...Override) []reflect.Value {
+	args, err := getArgs(c, fn, overrides...)
+	if err != nil {
+		panic(err)
+	}
+	return args
 }
 
 func appendToSliceInMap[K comparable, V any](m map[K][]V, k K, v ...V) {

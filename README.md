@@ -134,10 +134,8 @@ func main() {
 
 ## HTTP handlers
 
-The container can also encapsulate an application request. Here, handler turns
-an ordinary function into an http.HandlerFunc: it creates a scope for each
-request, registers the HTTP values as scoped dependencies, and resolves the
-function's arguments in any order.
+MakeRequestFunc turns an ordinary function into a framework callback while
+creating a scope and registering callback arguments for each invocation.
 
 ```go
 package main
@@ -176,29 +174,20 @@ func (s *AppService) ListItems() ([]Item, error) {
 	return items, err
 }
 
-func handler(fn any) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s := ioc.DefaultContainer.CreateScope()
-		defer s.Close()
-
-		s.AddScoped[http.ResponseWriter](ioc.Value(w))
-		s.AddScoped[*http.Request](ioc.Value(r))
-
-		err := ioc.MustCallErr(s, fn)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}
-}
-
-func listItems(lister ItemLister, w http.ResponseWriter) error {
+func listItems(
+	lister ItemLister,
+	w http.ResponseWriter,
+) {
 	items, err := lister.ListItems()
 	if err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(items)
+	if err := json.NewEncoder(w).Encode(items); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func main() {
@@ -211,19 +200,23 @@ func main() {
 	ioc.AddScoped[*AppService](newAppService)
 	ioc.BindScoped[ItemLister, *AppService]()
 
-	http.HandleFunc("/items", handler(listItems))
+	http.HandleFunc(
+		"/items",
+		ioc.MustMakeRequestFunc[http.HandlerFunc](
+			ioc.DefaultContainer,
+			listItems,
+		),
+	)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 ```
 
 ## Watermill consumers
 
-The same request-scope pattern applies to message consumers. This example keeps
-the Watermill adapter small: it scopes the incoming message and delegates to a
-plain application function. Router and subscriber construction are omitted;
-any Watermill subscriber can be passed to registerConsumers. Registering
-multiple transient ConsumerHandler providers lets the container collect every
-consumer configuration as a slice.
+MakeRequestFunc also adapts plain functions to Watermill consumers. Router and
+subscriber construction are omitted; any Watermill subscriber can be passed to
+registerConsumers. Registering multiple transient ConsumerHandler providers
+lets the container collect every consumer configuration as a slice.
 
 ```go
 package main
@@ -261,17 +254,6 @@ func (s *AppService) HandleItemCreated(event ItemCreated) error {
 	return nil
 }
 
-func consumer(fn any) message.NoPublishHandlerFunc {
-	return func(msg *message.Message) error {
-		s := ioc.DefaultContainer.CreateScope()
-		defer s.Close()
-
-		s.AddScoped[*message.Message](ioc.Value(msg))
-
-		return ioc.MustCallErr(s, fn)
-	}
-}
-
 func handleItemCreated(
 	msg *message.Message,
 	handler ItemCreatedHandler,
@@ -303,7 +285,10 @@ func registerConsumers(
 			Name:       "handle_item_created",
 			Topic:      "items.created",
 			Subscriber: subscriber,
-			Run:        consumer(handleItemCreated),
+			Run: ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+				ioc.DefaultContainer,
+				handleItemCreated,
+			),
 		}
 	})
 	c.AddTransient[ConsumerHandler](func(subscriber message.Subscriber) ConsumerHandler {
@@ -311,7 +296,10 @@ func registerConsumers(
 			Name:       "audit_item_created",
 			Topic:      "items.created.audit",
 			Subscriber: subscriber,
-			Run:        consumer(auditItemCreated),
+			Run: ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+				ioc.DefaultContainer,
+				auditItemCreated,
+			),
 		}
 	})
 
@@ -370,19 +358,23 @@ func createItemHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 	dispatcher *dispatch.Dispatcher,
-) error {
+) {
 	var request CreateItem
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	result, err := dispatcher.Send[CreateItemResult](request)
 	if err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func createItemMessage(
@@ -403,11 +395,46 @@ c := ioc.DefaultContainer
 dispatch.AddDispatcher(c)
 dispatch.RegisterHandlerFunc[CreateItem, CreateItemResult](c, createItem)
 
-http.HandleFunc("POST /items", handler(createItemHTTP))
+http.HandleFunc(
+	"POST /items",
+	ioc.MustMakeRequestFunc[http.HandlerFunc](
+		ioc.DefaultContainer,
+		createItemHTTP,
+	),
+)
 router.AddConsumerHandler(
 	"create_item",
 	"items.create",
 	subscriber,
-	consumer(createItemMessage),
+	ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+		ioc.DefaultContainer,
+		createItemMessage,
+	),
 )
 ~~~
+
+## Advanced: manual scopes and overrides
+
+MakeRequestFunc is the usual choice for framework callbacks. Create a scope
+manually when an invocation needs custom lifetime management, conditional
+registrations, or infrastructure such as a transaction.
+
+~~~go
+s := ioc.CreateScope()
+defer s.Close()
+
+s.AddScoped[*http.Request](ioc.Value(r))
+s.AddScoped[http.ResponseWriter](ioc.Value(w))
+
+// Invoke fn after resolving its dependencies from s.
+err := ioc.MustCallErr(
+	s,
+	fn,
+	ioc.ProvideNamed[ItemLister](0, "read-only"),
+)
+~~~
+
+Overrides select a function parameter by its zero-based index. Use Provide for
+ordinary type resolution, ProvideNamed to select a named registration, and
+ProvideValue to supply a specific value. Add registration methods,
+MakeRequestFunc, and the Call helpers all accept overrides.
