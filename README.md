@@ -117,9 +117,7 @@ func main() {
 		return sqlx.MustConnect("postgres", os.Getenv("DATABASE_URL"))
 	})
 	c.AddScoped[*AppService](newAppService)
-	c.AddScoped[ItemLister](func(app *AppService) ItemLister {
-		return app
-	})
+	c.BindScoped[ItemLister, *AppService]()
 
 	lister := c.MustGet[ItemLister]()
 

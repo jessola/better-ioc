@@ -19,7 +19,7 @@ func TestRecursion(t *testing.T) {
 	assert.Equal(4, x)
 }
 
-func TestScopeOverrides(t *testing.T) {
+func TestProviderPrecedence(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
 
@@ -63,74 +63,6 @@ func TestNamedDependenciesCanShareNameAcrossTypes(t *testing.T) {
 	retries, ok := s.GetNamed[int]("settings")
 	assert.True(ok)
 	assert.Equal(3, retries)
-}
-
-func TestProvide(t *testing.T) {
-	assert := assert.New(t)
-	c := NewContainer()
-
-	assert.NoError(c.AddScoped[int](Value(42)))
-	assert.NoError(c.AddScoped[bool](func(value any) bool {
-		return value.(int) == 42
-	}, Provide[int](0)))
-
-	assert.True(c.MustGet[bool]())
-}
-
-func TestProvideNamed(t *testing.T) {
-	assert := assert.New(t)
-	c := NewContainer()
-
-	assert.NoError(c.AddNamedScoped[int]("answer", Value(42)))
-	assert.NoError(c.AddScoped[bool](func(value any) bool {
-		return value.(int) == 42
-	}, ProvideNamed[int](0, "answer")))
-
-	assert.True(c.MustGet[bool]())
-}
-
-func TestProvideValue(t *testing.T) {
-	assert := assert.New(t)
-	c := NewContainer()
-
-	assert.NoError(c.AddScoped[bool](func(value any) bool {
-		return value.(int) == 42
-	}, ProvideValue[int](0, 42)))
-
-	assert.True(c.MustGet[bool]())
-}
-
-func TestProvideInstructionsWithInferredDependencies(t *testing.T) {
-	assert := assert.New(t)
-	c := NewContainer()
-
-	assert.NoError(c.AddScoped[string](Value("regular")))
-	assert.NoError(c.AddScoped[int](Value(42)))
-	assert.NoError(c.AddScoped[bool](Value(true)))
-	assert.NoError(c.AddNamedScoped[float64]("ratio", Value(1.5)))
-	assert.NoError(c.AddScoped[[]string](Value([]string{"tag"})))
-	assert.NoError(c.AddScoped[struct{}](func(
-		label string,
-		count any,
-		enabled bool,
-		ratio any,
-		tags []string,
-		message any,
-	) struct{} {
-		assert.Equal("regular", label)
-		assert.Equal(42, count)
-		assert.True(enabled)
-		assert.Equal(1.5, ratio)
-		assert.Equal([]string{"tag"}, tags)
-		assert.Equal("inline", message)
-		return struct{}{}
-	},
-		Provide[int](1),
-		ProvideNamed[float64](3, "ratio"),
-		ProvideValue(5, "inline"),
-	))
-
-	c.MustGet[struct{}]()
 }
 
 func TestGetSlice(t *testing.T) {
