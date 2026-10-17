@@ -55,6 +55,7 @@ func createScopedProvider(fn any, overrides ...Override) (providerConfig, error)
 			v := mustCallWithArgs(fnV, args)
 			// Set cache
 			c.cache[fnV] = v
+			c.trackValue(v)
 			return v
 		},
 	}

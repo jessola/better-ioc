@@ -3,6 +3,9 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
+> **Status:** Experimental pre-release (`v0.0.0`). Public APIs may change
+> without notice before a stable release.
+
 ## Example
 
 This example registers a database and an application service. BetterIOC sees
@@ -329,7 +332,7 @@ import (
 	"net/http"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	ioc "github.com/jessola/better-ioc"
+	"github.com/jessola/better-ioc"
 	"github.com/jessola/better-ioc/dispatch"
 	"github.com/jmoiron/sqlx"
 )

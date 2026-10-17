@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	ioc "github.com/jessola/better-ioc"
+	"github.com/jessola/better-ioc"
 	"github.com/stretchr/testify/assert"
 )
 

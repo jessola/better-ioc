@@ -61,6 +61,7 @@ func createSingletonProvider(fn any, overrides ...Override) (providerConfig, err
 		args := mustGetArgs(c, fnV, overrides...)
 		v := mustCallWithArgs(fnV, args)
 		c.cache[fnV] = v
+		c.trackValue(v)
 		return v
 	}
 

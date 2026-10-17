@@ -1,10 +1,12 @@
-// Package ioc provides a reflection-based dependency injection container for Go.
-// It uses reflection to resolve dependencies from constructor function parameters
-// at runtime.
+// Package ioc provides an experimental reflection-based dependency injection
+// container for Go. It resolves dependencies from constructor function parameters
+// at runtime. Its public API may change without notice before a stable release.
 package ioc
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sync"
 )
@@ -30,6 +32,7 @@ type Container struct {
 
 	nameMap map[key]providerConfig
 
+	uniqueValsMu sync.Mutex
 	uniqueValMap map[any]bool
 	uniqueVals   []any
 }
@@ -55,9 +58,24 @@ func (c *Container) CreateScope() *Container {
 	return child
 }
 
-// Close closes c. It currently releases no resources.
+// Close closes values created by c that implement io.Closer in reverse creation
+// order. It returns any errors reported while closing those values.
 func (c *Container) Close() error {
-	return nil
+	c.uniqueValsMu.Lock()
+	values := c.uniqueVals
+	c.uniqueVals = nil
+	c.uniqueValMap = map[any]bool{}
+	c.uniqueValsMu.Unlock()
+
+	var errs []error
+	for i := len(values) - 1; i >= 0; i-- {
+		closer := values[i].(io.Closer)
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // MustGet is like Get but panics with ErrNotFound when no matching provider is
@@ -175,6 +193,24 @@ func (c *Container) getAllProviders(t reflect.Type) []providerConfig {
 	appendProviders(&providers, c)
 
 	return providers
+}
+
+func (c *Container) trackValue(v any) {
+	c.uniqueValsMu.Lock()
+	defer c.uniqueValsMu.Unlock()
+
+	if _, ok := v.(io.Closer); !ok {
+		return
+	}
+	if !reflect.TypeOf(v).Comparable() {
+		return
+	}
+	if _, ok := c.uniqueValMap[v]; ok {
+		return
+	}
+
+	c.uniqueValMap[v] = true
+	c.uniqueVals = append(c.uniqueVals, v)
 }
 
 func mustCall(c *Container, fn reflect.Value, overrides ...Override) any {

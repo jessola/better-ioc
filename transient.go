@@ -47,7 +47,9 @@ func createTransientProvider(fn any, overrides ...Override) (providerConfig, err
 	config := providerConfig{
 		Create: func(c *Container) any {
 			args := mustGetArgs(c, fnV, overrides...)
-			return mustCallWithArgs(fnV, args)
+			v := mustCallWithArgs(fnV, args)
+			c.trackValue(v)
+			return v
 		},
 	}
 

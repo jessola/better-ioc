@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	ioc "github.com/jessola/better-ioc"
+	"github.com/jessola/better-ioc"
 )
 
 // ErrCouldNotCast is returned when a function handler's result cannot be cast
