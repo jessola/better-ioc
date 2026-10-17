@@ -7,7 +7,7 @@ import (
 
 // AddTransient registers fn as the provider for T. The provider is evaluated
 // each time T is resolved.
-func (c *Container) AddTransient[T any](fn any, overrides ...override) error {
+func (c *Container) AddTransient[T any](fn any, overrides ...Override) error {
 	config, err := createTransientProvider(fn, overrides...)
 	if err != nil {
 		return err
@@ -18,7 +18,7 @@ func (c *Container) AddTransient[T any](fn any, overrides ...override) error {
 
 // AddNamedTransient registers fn as a named transient provider for T. It also
 // registers the provider for ordinary type-based resolution of T.
-func (c *Container) AddNamedTransient[T any](name string, fn any, overrides ...override) error {
+func (c *Container) AddNamedTransient[T any](name string, fn any, overrides ...Override) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrNameCannotBeBlank
 	}
@@ -38,7 +38,7 @@ func (c *Container) AddNamedTransient[T any](name string, fn any, overrides ...o
 	return nil
 }
 
-func createTransientProvider(fn any, overrides ...override) (providerConfig, error) {
+func createTransientProvider(fn any, overrides ...Override) (providerConfig, error) {
 	fnV := reflect.ValueOf(fn)
 	if fnV.Type().Kind() != reflect.Func {
 		return providerConfig{}, ErrNotAFunc{t: fnV.Type()}

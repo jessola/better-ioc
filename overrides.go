@@ -11,7 +11,7 @@ const (
 
 type overrideKind uint
 
-type override struct {
+type Override struct {
 	Kind  overrideKind
 	Index int
 	Name  string
@@ -19,26 +19,26 @@ type override struct {
 	Value reflect.Value
 }
 
-type overrideMap map[int]override
+type overrideMap map[int]Override
 
-func newOverrideMap(overrides []override) overrideMap {
+func newOverrideMap(overrides []Override) overrideMap {
 	return makeMapFromOverrides(overrides...)
 }
 
-func (o override) Validate() error {
+func (o Override) Validate() error {
 	return nil
 }
 
-func Provide[T any](idx int) override {
-	return override{Kind: overrideBasic, Index: idx, Type: reflect.TypeFor[T]()}
+func Provide[T any](idx int) Override {
+	return Override{Kind: overrideBasic, Index: idx, Type: reflect.TypeFor[T]()}
 }
 
-func ProvideNamed[T any](idx int, name string) override {
-	return override{Kind: overrideNamed, Index: idx, Type: reflect.TypeFor[T](), Name: name}
+func ProvideNamed[T any](idx int, name string) Override {
+	return Override{Kind: overrideNamed, Index: idx, Type: reflect.TypeFor[T](), Name: name}
 }
 
-func ProvideValue[T any](idx int, value T) override {
-	return override{
+func ProvideValue[T any](idx int, value T) Override {
+	return Override{
 		Kind:  overrideValue,
 		Index: idx,
 		Type:  reflect.TypeFor[T](),
@@ -46,7 +46,7 @@ func ProvideValue[T any](idx int, value T) override {
 	}
 }
 
-func makeMapFromOverrides(overrides ...override) overrideMap {
+func makeMapFromOverrides(overrides ...Override) overrideMap {
 	m := overrideMap{}
 	for _, x := range overrides {
 		m[x.Index] = x

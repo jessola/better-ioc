@@ -7,7 +7,7 @@ import (
 
 // AddSingleton registers fn as the provider for T. The provider is evaluated at
 // most once for the container hierarchy and its result is reused thereafter.
-func (c *Container) AddSingleton[T any](fn any, overrides ...override) error {
+func (c *Container) AddSingleton[T any](fn any, overrides ...Override) error {
 	config, err := createSingletonProvider(fn, overrides...)
 	if err != nil {
 		return err
@@ -18,7 +18,7 @@ func (c *Container) AddSingleton[T any](fn any, overrides ...override) error {
 
 // AddNamedSingleton registers fn as a named singleton provider for T. It also
 // registers the provider for ordinary type-based resolution of T.
-func (c *Container) AddNamedSingleton[T any](name string, fn any, overrides ...override) error {
+func (c *Container) AddNamedSingleton[T any](name string, fn any, overrides ...Override) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrNameCannotBeBlank
 	}
@@ -38,7 +38,7 @@ func (c *Container) AddNamedSingleton[T any](name string, fn any, overrides ...o
 	return nil
 }
 
-func createSingletonProvider(fn any, overrides ...override) (providerConfig, error) {
+func createSingletonProvider(fn any, overrides ...Override) (providerConfig, error) {
 	fnV := reflect.ValueOf(fn)
 	if fnV.Type().Kind() != reflect.Func {
 		return providerConfig{}, ErrNotAFunc{t: fnV.Type()}

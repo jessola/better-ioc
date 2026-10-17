@@ -7,7 +7,7 @@ import (
 
 // AddScoped registers fn as the provider for T. The provider is evaluated once
 // per container, and its result is reused within that container.
-func (c *Container) AddScoped[T any](fn any, overrides ...override) error {
+func (c *Container) AddScoped[T any](fn any, overrides ...Override) error {
 	config, err := createScopedProvider(fn, overrides...)
 	if err != nil {
 		return err
@@ -18,7 +18,7 @@ func (c *Container) AddScoped[T any](fn any, overrides ...override) error {
 
 // AddNamedScoped registers fn as a named scoped provider for T. It also
 // registers the provider for ordinary type-based resolution of T.
-func (c *Container) AddNamedScoped[T any](name string, fn any, overrides ...override) error {
+func (c *Container) AddNamedScoped[T any](name string, fn any, overrides ...Override) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrNameCannotBeBlank
 	}
@@ -38,7 +38,7 @@ func (c *Container) AddNamedScoped[T any](name string, fn any, overrides ...over
 	return nil
 }
 
-func createScopedProvider(fn any, overrides ...override) (providerConfig, error) {
+func createScopedProvider(fn any, overrides ...Override) (providerConfig, error) {
 	fnV := reflect.ValueOf(fn)
 	if fnV.Type().Kind() != reflect.Func {
 		return providerConfig{}, ErrNotAFunc{t: fnV.Type()}

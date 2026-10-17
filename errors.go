@@ -29,3 +29,7 @@ func (err ErrNotAFunc) Error() string {
 func (err ErrNotFound) Error() string {
 	return fmt.Sprintf("no service with type %s", err.t.String())
 }
+
+func NewErrNotAFunc(t reflect.Type) ErrNotAFunc {
+	return ErrNotAFunc{t: t}
+}

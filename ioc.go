@@ -105,6 +105,9 @@ func (c *Container) Get[T any]() (v T, ok bool) {
 		v, ok = arr.Interface().(T)
 		return
 	}
+	if !ok {
+		return
+	}
 
 	v, ok = provider.Create(c).(T)
 	return
@@ -171,7 +174,7 @@ func (c *Container) getAllProviders(t reflect.Type) []providerConfig {
 	return providers
 }
 
-func mustCall(c *Container, fn reflect.Value, overrides ...override) any {
+func mustCall(c *Container, fn reflect.Value, overrides ...Override) any {
 	args := mustGetArgs(c, fn, overrides...)
 	out := fn.Call(args)
 	return out[0].Interface()
@@ -182,7 +185,7 @@ func mustCallWithArgs(fn reflect.Value, args []reflect.Value) any {
 	return out[0].Interface()
 }
 
-func mustGetArgs(c *Container, fn reflect.Value, overrides ...override) []reflect.Value {
+func mustGetArgs(c *Container, fn reflect.Value, overrides ...Override) []reflect.Value {
 	t := fn.Type()
 	deps := make([]reflect.Value, t.NumIn())
 	overrideMap := newOverrideMap(overrides)
