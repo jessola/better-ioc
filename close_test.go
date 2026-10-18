@@ -19,6 +19,16 @@ func (v *closeTestValue) Close() error {
 	return v.err
 }
 
+type closeTestExecer interface {
+	Exec()
+}
+
+type closeTestDB struct {
+	*closeTestValue
+}
+
+func (*closeTestDB) Exec() {}
+
 func TestCloseClosesValuesInReverseCreationOrder(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
@@ -73,4 +83,24 @@ func TestCloseDoesNotCloseSingletonFromChildScope(t *testing.T) {
 
 	assert.NoError(root.Close())
 	assert.Equal([]string{"singleton"}, closed)
+}
+
+func TestCloseDoesNotCloseSingletonReturnedByScopedProvider(t *testing.T) {
+	assert := assert.New(t)
+	root := NewContainer()
+	child := root.CreateScope()
+	closed := []string{}
+	db := &closeTestDB{closeTestValue: &closeTestValue{name: "database", closed: &closed}}
+
+	assert.NoError(root.AddSingleton[*closeTestDB](Value(db)))
+	assert.NoError(root.AddScoped[closeTestExecer](func(db *closeTestDB) closeTestExecer {
+		return db
+	}))
+
+	assert.Same(db, child.MustGet[closeTestExecer]())
+	assert.NoError(child.Close())
+	assert.Empty(closed)
+
+	assert.NoError(root.Close())
+	assert.Equal([]string{"database"}, closed)
 }

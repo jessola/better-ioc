@@ -194,24 +194,6 @@ func (c *Container) getAllProviders(t reflect.Type) []providerConfig {
 	return providers
 }
 
-func (c *Container) trackValue(v any) {
-	c.uniqueValsMu.Lock()
-	defer c.uniqueValsMu.Unlock()
-
-	if _, ok := v.(io.Closer); !ok {
-		return
-	}
-	if !reflect.TypeOf(v).Comparable() {
-		return
-	}
-	if _, ok := c.uniqueValMap[v]; ok {
-		return
-	}
-
-	c.uniqueValMap[v] = true
-	c.uniqueVals = append(c.uniqueVals, v)
-}
-
 func mustCall(c *Container, fn reflect.Value, overrides ...Override) any {
 	args := mustGetArgs(c, fn, overrides...)
 	out := fn.Call(args)

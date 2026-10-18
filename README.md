@@ -3,7 +3,7 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
-> **Status:** Experimental pre-release (`v0.1.0`). Public APIs may change
+> **Status:** Experimental pre-release (`v0.1.1`). Public APIs may change
 > without notice before a stable release.
 
 ## Example
