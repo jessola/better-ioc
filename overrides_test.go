@@ -41,6 +41,20 @@ func TestProvideValue(t *testing.T) {
 	assert.True(c.MustGet[bool]())
 }
 
+func TestProvideFactory(t *testing.T) {
+	assert := assert.New(t)
+	c := NewContainer()
+
+	assert.NoError(c.AddScoped[string](Value("factory value")))
+	assert.NoError(c.AddScoped[bool](func(value any) bool {
+		return value.(string) == "factory value"
+	}, ProvideFactory(0, func(c *Container) any {
+		return c.MustGet[string]()
+	})))
+
+	assert.True(c.MustGet[bool]())
+}
+
 func TestProvideInstructionsWithInferredDependencies(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()

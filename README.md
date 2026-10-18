@@ -3,7 +3,7 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
-> **Status:** Experimental pre-release (`v0.0.0`). Public APIs may change
+> **Status:** Experimental pre-release (`v0.1.0`). Public APIs may change
 > without notice before a stable release.
 
 ## Example
@@ -324,7 +324,7 @@ application action. Define the action once as a request and handler function;
 HTTP and message consumers then only translate their input into that request.
 This example builds on the database and handler/consumer adapters above.
 
-~~~go
+```go
 package main
 
 import (
@@ -414,7 +414,7 @@ router.AddConsumerHandler(
 		createItemMessage,
 	),
 )
-~~~
+```
 
 ## Advanced: manual scopes and overrides
 
@@ -422,7 +422,7 @@ MakeRequestFunc is the usual choice for framework callbacks. Create a scope
 manually when an invocation needs custom lifetime management, conditional
 registrations, or infrastructure such as a transaction.
 
-~~~go
+```go
 s := ioc.CreateScope()
 defer s.Close()
 
@@ -435,7 +435,7 @@ err := ioc.MustCallErr(
 	fn,
 	ioc.ProvideNamed[ItemLister](0, "read-only"),
 )
-~~~
+```
 
 Overrides select a function parameter by its zero-based index. Use Provide for
 ordinary type resolution, ProvideNamed to select a named registration, and

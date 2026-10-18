@@ -12,11 +12,12 @@ const (
 type overrideKind uint
 
 type Override struct {
-	Kind  overrideKind
-	Index int
-	Name  string
-	Type  reflect.Type
-	Value reflect.Value
+	Kind    overrideKind
+	Index   int
+	Name    string
+	Type    reflect.Type
+	Value   reflect.Value
+	Factory func(*Container) any
 }
 
 type overrideMap map[int]Override
@@ -43,6 +44,17 @@ func ProvideValue[T any](idx int, value T) Override {
 		Index: idx,
 		Type:  reflect.TypeFor[T](),
 		Value: reflect.ValueOf(value),
+	}
+}
+
+// ProvideFactory overrides the dependency at idx with the value returned by
+// fn. The factory receives the container resolving the dependency, allowing it
+// to resolve values from the current scope.
+func ProvideFactory(idx int, fn func(*Container) any) Override {
+	return Override{
+		Kind:    overrideFactory,
+		Index:   idx,
+		Factory: fn,
 	}
 }
 

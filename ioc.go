@@ -5,7 +5,6 @@ package ioc
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"reflect"
 	"sync"
@@ -253,7 +252,7 @@ func getArgs(c *Container, fn reflect.Value, overrides ...Override) ([]reflect.V
 			case overrideValue:
 				deps[i] = ovr.Value
 			case overrideFactory:
-				return []reflect.Value{}, fmt.Errorf("not implemented")
+				deps[i] = reflect.ValueOf(ovr.Factory(c))
 			default: // overrideBasic
 				provider, ok := c.getDefaultProvider(ovr.Type)
 				if !ok {
