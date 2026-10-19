@@ -47,21 +47,21 @@ func MustCallValErr(c *Container, fn any, overrides ...Override) (any, error) {
 	return out[0].Interface(), nil
 }
 
-// MustMakeRequestFunc is like MakeRequestFunc but panics when the wrapper
+// MustMakeScopedFunc is like MakeScopedFunc but panics when the wrapper
 // cannot be created.
-func MustMakeRequestFunc[T any](c *Container, fn any, overrides ...Override) T {
-	v, err := MakeRequestFunc[T](c, fn, overrides...)
+func MustMakeScopedFunc[T any](c *Container, fn any, overrides ...Override) T {
+	v, err := MakeScopedFunc[T](c, fn, overrides...)
 	if err != nil {
 		panic(err)
 	}
 	return v
 }
 
-// MakeRequestFunc returns a function of type T that creates a child scope for
+// MakeScopedFunc returns a function of type T that creates a child scope for
 // each invocation. Its invocation arguments are registered as scoped values,
 // then fn is called with dependencies resolved from that scope. T must be a
 // function type compatible with the generated wrapper.
-func MakeRequestFunc[T any](c *Container, fn any, overrides ...Override) (v T, err error) {
+func MakeScopedFunc[T any](c *Container, fn any, overrides ...Override) (v T, err error) {
 	if reflect.TypeOf(fn).Kind() != reflect.Func {
 		err = NewErrNotAFunc(reflect.TypeOf(fn))
 		return

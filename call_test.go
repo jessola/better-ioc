@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type makeRequestFunc func(string) string
+type makeScopedFunc func(string) string
 
 func TestMustCall(t *testing.T) {
 	assert := assert.New(t)
@@ -80,13 +80,13 @@ func TestMustCallValErr(t *testing.T) {
 	})
 }
 
-func TestMakeRequestFunc(t *testing.T) {
+func TestMakeScopedFunc(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
 	scopes := []*Container{}
 
 	assert.NoError(c.AddScoped[int](Value(42)))
-	fn, err := MakeRequestFunc[makeRequestFunc](c, func(request string, value int, scope *Container) string {
+	fn, err := MakeScopedFunc[makeScopedFunc](c, func(request string, value int, scope *Container) string {
 		assert.Equal(42, value)
 		scopes = append(scopes, scope)
 		return request
@@ -100,16 +100,16 @@ func TestMakeRequestFunc(t *testing.T) {
 	assert.NotSame(scopes[0], scopes[1])
 }
 
-func TestMustMakeRequestFunc(t *testing.T) {
+func TestMustMakeScopedFunc(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
 
-	fn := MustMakeRequestFunc[makeRequestFunc](c, func(request string) string {
+	fn := MustMakeScopedFunc[makeScopedFunc](c, func(request string) string {
 		return request
 	})
 
 	assert.Equal("request", fn("request"))
 	assert.PanicsWithValue(NewErrNotAFunc(reflect.TypeOf("not a function")), func() {
-		MustMakeRequestFunc[makeRequestFunc](c, "not a function")
+		MustMakeScopedFunc[makeScopedFunc](c, "not a function")
 	})
 }

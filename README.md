@@ -3,7 +3,7 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
-> **Status:** Experimental pre-release (`v0.1.1`). Public APIs may change
+> **Status:** Experimental pre-release (`v0.2.0`). Public APIs may change
 > without notice before a stable release.
 
 ## Example
@@ -137,7 +137,7 @@ func main() {
 
 ## HTTP handlers
 
-MakeRequestFunc turns an ordinary function into a framework callback while
+MakeScopedFunc turns an ordinary function into a framework callback while
 creating a scope and registering callback arguments for each invocation.
 
 ```go
@@ -205,7 +205,7 @@ func main() {
 
 	http.HandleFunc(
 		"/items",
-		ioc.MustMakeRequestFunc[http.HandlerFunc](
+		ioc.MustMakeScopedFunc[http.HandlerFunc](
 			ioc.DefaultContainer,
 			listItems,
 		),
@@ -216,7 +216,7 @@ func main() {
 
 ## Watermill consumers
 
-MakeRequestFunc also adapts plain functions to Watermill consumers. Router and
+MakeScopedFunc also adapts plain functions to Watermill consumers. Router and
 subscriber construction are omitted; any Watermill subscriber can be passed to
 registerConsumers. Registering multiple transient ConsumerHandler providers
 lets the container collect every consumer configuration as a slice.
@@ -288,7 +288,7 @@ func registerConsumers(
 			Name:       "handle_item_created",
 			Topic:      "items.created",
 			Subscriber: subscriber,
-			Run: ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+			Run: ioc.MustMakeScopedFunc[message.NoPublishHandlerFunc](
 				ioc.DefaultContainer,
 				handleItemCreated,
 			),
@@ -299,7 +299,7 @@ func registerConsumers(
 			Name:       "audit_item_created",
 			Topic:      "items.created.audit",
 			Subscriber: subscriber,
-			Run: ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+			Run: ioc.MustMakeScopedFunc[message.NoPublishHandlerFunc](
 				ioc.DefaultContainer,
 				auditItemCreated,
 			),
@@ -400,7 +400,7 @@ dispatch.RegisterHandlerFunc[CreateItem, CreateItemResult](c, createItem)
 
 http.HandleFunc(
 	"POST /items",
-	ioc.MustMakeRequestFunc[http.HandlerFunc](
+	ioc.MustMakeScopedFunc[http.HandlerFunc](
 		ioc.DefaultContainer,
 		createItemHTTP,
 	),
@@ -409,7 +409,7 @@ router.AddConsumerHandler(
 	"create_item",
 	"items.create",
 	subscriber,
-	ioc.MustMakeRequestFunc[message.NoPublishHandlerFunc](
+	ioc.MustMakeScopedFunc[message.NoPublishHandlerFunc](
 		ioc.DefaultContainer,
 		createItemMessage,
 	),
@@ -418,7 +418,7 @@ router.AddConsumerHandler(
 
 ## Advanced: manual scopes and overrides
 
-MakeRequestFunc is the usual choice for framework callbacks. Create a scope
+MakeScopedFunc is the usual choice for framework callbacks. Create a scope
 manually when an invocation needs custom lifetime management, conditional
 registrations, or infrastructure such as a transaction.
 
@@ -440,4 +440,4 @@ err := ioc.MustCallErr(
 Overrides select a function parameter by its zero-based index. Use Provide for
 ordinary type resolution, ProvideNamed to select a named registration, and
 ProvideValue to supply a specific value. Add registration methods,
-MakeRequestFunc, and the Call helpers all accept overrides.
+MakeScopedFunc, and the Call helpers all accept overrides.
