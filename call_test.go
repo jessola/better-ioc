@@ -10,6 +10,15 @@ import (
 
 type makeScopedFunc func(string) string
 
+type callTestCloser struct {
+	closed bool
+}
+
+func (v *callTestCloser) Close() error {
+	v.closed = true
+	return nil
+}
+
 func TestMustCall(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
@@ -100,6 +109,28 @@ func TestMakeScopedFunc(t *testing.T) {
 	assert.NotSame(scopes[0], scopes[1])
 }
 
+func TestMakeFuncWithScope(t *testing.T) {
+	assert := assert.New(t)
+	c := NewContainer()
+	s := c.CreateScope()
+	resource := &callTestCloser{}
+
+	assert.NoError(s.AddScoped[int](Value(42)))
+	assert.NoError(s.AddScoped[*callTestCloser](Value(resource)))
+	fn, err := MakeFuncWithScope[makeScopedFunc](s, func(request string, value int, scope *Container, closer *callTestCloser) string {
+		assert.Equal(42, value)
+		assert.Same(s, scope)
+		assert.Same(resource, closer)
+		return request
+	})
+	assert.NoError(err)
+
+	assert.Equal("request", fn("request"))
+	assert.False(resource.closed)
+	assert.NoError(s.Close())
+	assert.True(resource.closed)
+}
+
 func TestMustMakeScopedFunc(t *testing.T) {
 	assert := assert.New(t)
 	c := NewContainer()
@@ -111,5 +142,14 @@ func TestMustMakeScopedFunc(t *testing.T) {
 	assert.Equal("request", fn("request"))
 	assert.PanicsWithValue(NewErrNotAFunc(reflect.TypeOf("not a function")), func() {
 		MustMakeScopedFunc[makeScopedFunc](c, "not a function")
+	})
+}
+
+func TestMustMakeFuncWithScope(t *testing.T) {
+	assert := assert.New(t)
+	s := NewContainer().CreateScope()
+
+	assert.PanicsWithValue(NewErrNotAFunc(reflect.TypeOf("not a function")), func() {
+		MustMakeFuncWithScope[makeScopedFunc](s, "not a function")
 	})
 }

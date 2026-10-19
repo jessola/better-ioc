@@ -416,11 +416,35 @@ router.AddConsumerHandler(
 )
 ```
 
-## Advanced: manual scopes and overrides
+## Advanced: custom callback scopes
 
-MakeScopedFunc is the usual choice for framework callbacks. Create a scope
-manually when an invocation needs custom lifetime management, conditional
-registrations, or infrastructure such as a transaction.
+MakeScopedFunc is the usual choice for framework callbacks. When an invocation
+needs custom scope setup—such as a transaction—create and close the scope in a
+wrapper, then use MakeFuncWithScope. It automatically registers the framework
+callback arguments in your supplied scope.
+
+```go
+func transactionalHandler(fn any) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s := ioc.DefaultContainer.CreateScope()
+		defer s.Close()
+
+		// Register transaction-specific providers on s.
+		// MakeFuncWithScope registers w and r before resolving fn.
+		ioc.MustMakeFuncWithScope[http.HandlerFunc](s, fn)(w, r)
+	}
+}
+```
+
+MakeFuncWithScope does not create or close the supplied scope; its caller owns
+that lifetime. Its generic function type allows wrappers for any callback
+shape, not only HTTP handlers.
+
+### Manual invocation and overrides
+
+Use MustCall when you want to resolve and invoke a function immediately rather
+than adapt it into another function type. Create a scope manually when an
+invocation needs custom lifetime management or conditional registrations.
 
 ```go
 s := ioc.CreateScope()
@@ -440,4 +464,4 @@ err := ioc.MustCallErr(
 Overrides select a function parameter by its zero-based index. Use Provide for
 ordinary type resolution, ProvideNamed to select a named registration, and
 ProvideValue to supply a specific value. Add registration methods,
-MakeScopedFunc, and the Call helpers all accept overrides.
+MakeScopedFunc, MakeFuncWithScope, and the Call helpers all accept overrides.

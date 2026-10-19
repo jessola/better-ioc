@@ -57,6 +57,49 @@ func MustMakeScopedFunc[T any](c *Container, fn any, overrides ...Override) T {
 	return v
 }
 
+// MustMakeFuncWithScope is like MakeFuncWithScope but panics when the wrapper
+// cannot be created.
+func MustMakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) T {
+	v, err := MakeFuncWithScope[T](s, fn, overrides...)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+// MakeFuncWithScope returns a function of type T that resolves dependencies
+// from s for each invocation. Its invocation arguments are registered as
+// scoped values in s. The caller owns s and is responsible for closing it.
+// T must be a function type compatible with the generated wrapper.
+func MakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) (v T, err error) {
+	if reflect.TypeOf(fn).Kind() != reflect.Func {
+		err = NewErrNotAFunc(reflect.TypeOf(fn))
+		return
+	}
+
+	fnV := reflect.ValueOf(fn)
+
+	wrapped := reflect.MakeFunc(reflect.TypeFor[T](), func(args []reflect.Value) (results []reflect.Value) {
+		for _, arg := range args {
+			config, err := createScopedProvider(Value(arg.Interface()), overrides...)
+			if err != nil {
+				panic(err)
+			}
+			appendToSliceInMap(s.providers, arg.Type(), config)
+		}
+
+		deps := mustGetArgs(s, fnV, overrides...)
+		return fnV.Call(deps)
+	})
+
+	var ok bool
+	if v, ok = wrapped.Interface().(T); !ok {
+		err = ErrCouldNotCast{}
+	}
+
+	return
+}
+
 // MakeScopedFunc returns a function of type T that creates a child scope for
 // each invocation. Its invocation arguments are registered as scoped values,
 // then fn is called with dependencies resolved from that scope. T must be a
@@ -67,24 +110,12 @@ func MakeScopedFunc[T any](c *Container, fn any, overrides ...Override) (v T, er
 		return
 	}
 
-	fnV := reflect.ValueOf(fn)
-
 	wrapped := reflect.MakeFunc(reflect.TypeFor[T](), func(args []reflect.Value) (results []reflect.Value) {
 		s := c.CreateScope()
 		defer s.Close()
 
-		for _, arg := range args {
-			// I know this functionality is duplicated from scoped.go
-			config, err := createScopedProvider(Value(arg.Interface()), overrides...)
-			if err != nil {
-				panic(err)
-			}
-			appendToSliceInMap(s.providers, arg.Type(), config)
-		}
-
-		deps := mustGetArgs(s, fnV, overrides...)
-		results = fnV.Call(deps)
-		return
+		fn := MustMakeFuncWithScope[T](s, fn, overrides...)
+		return reflect.ValueOf(fn).Call(args)
 	})
 
 	var ok bool
