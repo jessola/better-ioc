@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/jessola/better-ioc"
+	ioc "github.com/jessola/better-ioc"
 )
 
 // ErrCouldNotCast is returned when a function handler's result cannot be cast
@@ -74,21 +74,21 @@ func (fn ErrHandlerFunc[Req]) Handle(req Req) error {
 // multiple handlers for a given request type. This is not some generic message
 // bus
 
-// RegisterHandler registers handler to handle requests of type Req and return
+// AddHandler registers handler to handle requests of type Req and return
 // responses of type Res.
-func RegisterHandler[Req, Res any](c *ioc.Container, handler Handler[Req, Res], overrides ...ioc.Override) error {
+func AddHandler[Req, Res any](c *ioc.Container, handler Handler[Req, Res], overrides ...ioc.Override) error {
 	return c.AddTransient[Handler[Req, Res]](ioc.Value(handler), overrides...)
 }
 
-// RegisterErrHandler registers handler to handle requests of type Req without
+// AddErrHandler registers handler to handle requests of type Req without
 // returning a response value.
-func RegisterErrHandler[Req any](c *ioc.Container, handler ErrHandler[Req], overrides ...ioc.Override) error {
+func AddErrHandler[Req any](c *ioc.Container, handler ErrHandler[Req], overrides ...ioc.Override) error {
 	return c.AddTransient[ErrHandler[Req]](ioc.Value(handler), overrides...)
 }
 
-// RegisterHandlerFunc registers fn as a handler for Req with a response of Res.
+// AddHandlerFunc registers fn as a handler for Req with a response of Res.
 // When dispatched, fn's parameters are resolved from the active container scope.
-func RegisterHandlerFunc[Req, Res any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
+func AddHandlerFunc[Req, Res any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
 	if reflect.TypeOf(fn).Kind() != reflect.Func {
 		return ioc.NewErrNotAFunc(reflect.TypeOf(fn))
 	}
@@ -108,10 +108,10 @@ func RegisterHandlerFunc[Req, Res any](c *ioc.Container, fn any, overrides ...io
 	})
 }
 
-// RegisterErrHandlerFunc registers fn as a handler for Req without a response
+// AddErrHandlerFunc registers fn as a handler for Req without a response
 // value. When dispatched, fn's parameters are resolved from the active
 // container scope.
-func RegisterErrHandlerFunc[Req any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
+func AddErrHandlerFunc[Req any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
 	if reflect.TypeOf(fn).Kind() != reflect.Func {
 		return ioc.NewErrNotAFunc(reflect.TypeOf(fn))
 	}

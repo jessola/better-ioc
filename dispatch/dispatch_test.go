@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/jessola/better-ioc"
+	ioc "github.com/jessola/better-ioc"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +45,7 @@ func TestSend(t *testing.T) {
 	c := ioc.NewContainer()
 
 	assert.NoError(AddDispatcher(c))
-	assert.NoError(RegisterHandler(c, dispatchTestHandler{}))
+	assert.NoError(AddHandler(c, dispatchTestHandler{}))
 
 	response, err := c.MustGet[*Dispatcher]().Send[dispatchTestResponse](dispatchTestRequest{Value: "sent"})
 
@@ -59,7 +59,7 @@ func TestSendReturnsHandlerError(t *testing.T) {
 	expected := errors.New("handler failed")
 
 	assert.NoError(AddDispatcher(c))
-	assert.NoError(RegisterHandler(c, dispatchTestHandler{err: expected}))
+	assert.NoError(AddHandler(c, dispatchTestHandler{err: expected}))
 
 	response, err := c.MustGet[*Dispatcher]().Send[dispatchTestResponse](dispatchTestRequest{})
 
@@ -67,13 +67,13 @@ func TestSendReturnsHandlerError(t *testing.T) {
 	assert.Equal(dispatchTestResponse{}, response)
 }
 
-func TestRegisterHandlerFunc(t *testing.T) {
+func TestAddHandlerFunc(t *testing.T) {
 	assert := assert.New(t)
 	c := ioc.NewContainer()
 
 	assert.NoError(AddDispatcher(c))
 	assert.NoError(c.AddScoped[string](ioc.Value("prefix")))
-	assert.NoError(RegisterHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, func(
+	assert.NoError(AddHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, func(
 		prefix string,
 		request dispatchTestRequest,
 	) (dispatchTestResponse, error) {
@@ -86,12 +86,12 @@ func TestRegisterHandlerFunc(t *testing.T) {
 	assert.Equal(dispatchTestResponse{Value: "prefix:request"}, response)
 }
 
-func TestRegisterHandlerFuncReturnsErrCouldNotCast(t *testing.T) {
+func TestAddHandlerFuncReturnsErrCouldNotCast(t *testing.T) {
 	assert := assert.New(t)
 	c := ioc.NewContainer()
 
 	assert.NoError(AddDispatcher(c))
-	assert.NoError(RegisterHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, func() (string, error) {
+	assert.NoError(AddHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, func() (string, error) {
 		return "wrong response type", nil
 	}))
 
@@ -106,7 +106,7 @@ func TestSendErr(t *testing.T) {
 	handled := false
 
 	assert.NoError(AddDispatcher(c))
-	assert.NoError(RegisterErrHandler(c, dispatchTestCommandHandler{handled: &handled}))
+	assert.NoError(AddErrHandler(c, dispatchTestCommandHandler{handled: &handled}))
 
 	err := c.MustGet[*Dispatcher]().SendErr(dispatchTestCommand{})
 
@@ -121,7 +121,7 @@ func TestSendErrReturnsHandlerError(t *testing.T) {
 	expected := errors.New("handler failed")
 
 	assert.NoError(AddDispatcher(c))
-	assert.NoError(RegisterErrHandler(c, dispatchTestCommandHandler{
+	assert.NoError(AddErrHandler(c, dispatchTestCommandHandler{
 		handled: &handled,
 		err:     expected,
 	}))
@@ -132,14 +132,14 @@ func TestSendErrReturnsHandlerError(t *testing.T) {
 	assert.True(handled)
 }
 
-func TestRegisterErrHandlerFunc(t *testing.T) {
+func TestAddErrHandlerFunc(t *testing.T) {
 	assert := assert.New(t)
 	c := ioc.NewContainer()
 	handled := false
 
 	assert.NoError(AddDispatcher(c))
 	assert.NoError(c.AddScoped[string](ioc.Value("dependency")))
-	assert.NoError(RegisterErrHandlerFunc[dispatchTestCommand](c, func(
+	assert.NoError(AddErrHandlerFunc[dispatchTestCommand](c, func(
 		dependency string,
 		command dispatchTestCommand,
 	) error {
@@ -155,15 +155,15 @@ func TestRegisterErrHandlerFunc(t *testing.T) {
 	assert.True(handled)
 }
 
-func TestRegisterHandlerFuncsRequireFunctions(t *testing.T) {
+func TestAddHandlerFuncsRequireFunctions(t *testing.T) {
 	assert := assert.New(t)
 	c := ioc.NewContainer()
 
-	err := RegisterHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, "not a function")
+	err := AddHandlerFunc[dispatchTestRequest, dispatchTestResponse](c, "not a function")
 	var notAFunc ioc.ErrNotAFunc
 	assert.ErrorAs(err, &notAFunc)
 
-	err = RegisterErrHandlerFunc[dispatchTestCommand](c, "not a function")
+	err = AddErrHandlerFunc[dispatchTestCommand](c, "not a function")
 	assert.ErrorAs(err, &notAFunc)
 }
 
@@ -186,7 +186,7 @@ func TestDispatcherUsesActiveScope(t *testing.T) {
 	child := root.CreateScope()
 
 	assert.NoError(AddDispatcher(root))
-	assert.NoError(RegisterHandler(child, dispatchTestHandler{}))
+	assert.NoError(AddHandler(child, dispatchTestHandler{}))
 
 	response, err := child.MustGet[*Dispatcher]().Send[dispatchTestResponse](dispatchTestRequest{Value: "child"})
 	assert.NoError(err)

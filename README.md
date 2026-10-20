@@ -3,7 +3,7 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
-> **Status:** Experimental pre-release (`v0.2.0`). Public APIs may change
+> **Status:** Experimental pre-release (`v0.3.0`). Public APIs may change
 > without notice before a stable release.
 
 ## Example
@@ -396,7 +396,7 @@ func createItemMessage(
 // During application startup, after constructing router and subscriber:
 c := ioc.DefaultContainer
 dispatch.AddDispatcher(c)
-dispatch.RegisterHandlerFunc[CreateItem, CreateItemResult](c, createItem)
+dispatch.AddHandlerFunc[CreateItem, CreateItemResult](c, createItem)
 
 http.HandleFunc(
 	"POST /items",
