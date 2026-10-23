@@ -3,7 +3,7 @@
 BetterIOC is a reflection-based dependency injection container for Go. It uses
 reflection to resolve dependencies from constructor function parameters at runtime.
 
-> **Status:** Experimental pre-release (`v0.3.0`). Public APIs may change
+> **Status:** Experimental pre-release (`v0.4.0`). Public APIs may change
 > without notice before a stable release.
 
 ## Example
@@ -456,12 +456,15 @@ s.AddScoped[http.ResponseWriter](ioc.Value(w))
 // Invoke fn after resolving its dependencies from s.
 err := ioc.MustCallErr(
 	s,
-	fn,
-	ioc.ProvideNamed[ItemLister](0, "read-only"),
+	ioc.WithOverrides(
+		fn,
+		ioc.ProvideNamed[ItemLister](0, "read-only"),
+	),
 )
 ```
 
 Overrides select a function parameter by its zero-based index. Use Provide for
 ordinary type resolution, ProvideNamed to select a named registration, and
-ProvideValue to supply a specific value. Add registration methods,
-MakeScopedFunc, MakeFuncWithScope, and the Call helpers all accept overrides.
+ProvideValue to supply a specific value. Use WithOverrides to attach overrides
+before passing a function to registration methods, MakeScopedFunc,
+MakeFuncWithScope, or the Call helpers.

@@ -74,28 +74,31 @@ func (fn ErrHandlerFunc[Req]) Handle(req Req) error {
 // multiple handlers for a given request type. This is not some generic message
 // bus
 
-// AddHandler registers handler to handle requests of type Req and return
-// responses of type Res.
-func AddHandler[Req, Res any](c *ioc.Container, handler Handler[Req, Res], overrides ...ioc.Override) error {
-	return c.AddTransient[Handler[Req, Res]](ioc.Value(handler), overrides...)
+// AddHandler registers fn as a transient Handler constructor for requests of
+// type Req and responses of type Res. fn may be an ioc.FuncSpec returned by
+// ioc.WithOverrides.
+func AddHandler[Req, Res any](c *ioc.Container, fn any) error {
+	return c.AddTransient[Handler[Req, Res]](fn)
 }
 
-// AddErrHandler registers handler to handle requests of type Req without
-// returning a response value.
-func AddErrHandler[Req any](c *ioc.Container, handler ErrHandler[Req], overrides ...ioc.Override) error {
-	return c.AddTransient[ErrHandler[Req]](ioc.Value(handler), overrides...)
+// AddErrHandler registers fn as a transient ErrHandler constructor for
+// requests of type Req. fn may be an ioc.FuncSpec returned by
+// ioc.WithOverrides.
+func AddErrHandler[Req any](c *ioc.Container, fn any) error {
+	return c.AddTransient[ErrHandler[Req]](fn)
 }
 
 // AddHandlerFunc registers fn as a handler for Req with a response of Res.
 // When dispatched, fn's parameters are resolved from the active container scope.
-func AddHandlerFunc[Req, Res any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
-	if reflect.TypeOf(fn).Kind() != reflect.Func {
-		return ioc.NewErrNotAFunc(reflect.TypeOf(fn))
+// fn may be an ioc.FuncSpec returned by ioc.WithOverrides.
+func AddHandlerFunc[Req, Res any](c *ioc.Container, fn any) error {
+	if _, err := ioc.EnsureFunc(fn); err != nil {
+		return err
 	}
 
 	return c.AddTransient[Handler[Req, Res]](func(s *ioc.Container) HandlerFunc[Req, Res] {
 		return func(req Req) (res Res, err error) {
-			val, err := ioc.MustCallValErr(s, fn, overrides...)
+			val, err := ioc.MustCallValErr(s, fn)
 			if err != nil {
 				return
 			}
@@ -110,15 +113,15 @@ func AddHandlerFunc[Req, Res any](c *ioc.Container, fn any, overrides ...ioc.Ove
 
 // AddErrHandlerFunc registers fn as a handler for Req without a response
 // value. When dispatched, fn's parameters are resolved from the active
-// container scope.
-func AddErrHandlerFunc[Req any](c *ioc.Container, fn any, overrides ...ioc.Override) error {
-	if reflect.TypeOf(fn).Kind() != reflect.Func {
-		return ioc.NewErrNotAFunc(reflect.TypeOf(fn))
+// container scope. fn may be an ioc.FuncSpec returned by ioc.WithOverrides.
+func AddErrHandlerFunc[Req any](c *ioc.Container, fn any) error {
+	if _, err := ioc.EnsureFunc(fn); err != nil {
+		return err
 	}
 
 	return c.AddTransient[ErrHandler[Req]](func(s *ioc.Container) ErrHandlerFunc[Req] {
 		return func(req Req) error {
-			return ioc.MustCallErr(s, fn, overrides...)
+			return ioc.MustCallErr(s, fn)
 		}
 	})
 }

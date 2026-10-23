@@ -10,6 +10,8 @@ import (
 // empty or whitespace-only name.
 var ErrNameCannotBeBlank = errors.New("name cannot be blank")
 
+var ErrCannotBeNil = errors.New("cannot be nil")
+
 type ErrCouldNotCast struct {
 }
 

@@ -7,8 +7,8 @@ import (
 
 // AddScoped registers fn as the provider for T. The provider is evaluated once
 // per container, and its result is reused within that container.
-func (c *Container) AddScoped[T any](fn any, overrides ...Override) error {
-	config, err := createScopedProvider(fn, overrides...)
+func (c *Container) AddScoped[T any](fn any) error {
+	config, err := createScopedProvider(fn)
 	if err != nil {
 		return err
 	}
@@ -18,12 +18,12 @@ func (c *Container) AddScoped[T any](fn any, overrides ...Override) error {
 
 // AddNamedScoped registers fn as a named scoped provider for T. It also
 // registers the provider for ordinary type-based resolution of T.
-func (c *Container) AddNamedScoped[T any](name string, fn any, overrides ...Override) error {
+func (c *Container) AddNamedScoped[T any](name string, fn any) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrNameCannotBeBlank
 	}
 
-	config, err := createScopedProvider(fn, overrides...)
+	config, err := createScopedProvider(fn)
 	if err != nil {
 		return err
 	}
@@ -38,11 +38,12 @@ func (c *Container) AddNamedScoped[T any](name string, fn any, overrides ...Over
 	return nil
 }
 
-func createScopedProvider(fn any, overrides ...Override) (providerConfig, error) {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		return providerConfig{}, ErrNotAFunc{t: fnV.Type()}
+func createScopedProvider(fn any) (providerConfig, error) {
+	spec, err := EnsureFunc(fn)
+	if err != nil {
+		return providerConfig{}, err
 	}
+	fnV := reflect.ValueOf(spec.Func)
 
 	config := providerConfig{
 		Create: func(c *Container) any {
@@ -51,7 +52,7 @@ func createScopedProvider(fn any, overrides ...Override) (providerConfig, error)
 				return v
 			}
 
-			args := mustGetArgs(c, fnV, overrides...)
+			args := mustGetArgs(c, fnV, spec.Overrides...)
 			v := mustCallWithArgs(fnV, args)
 			// Set cache
 			c.cache[fnV] = v

@@ -4,22 +4,24 @@ import (
 	"reflect"
 )
 
-// MustCall resolves fn's arguments from c, applies overrides, and invokes fn.
-// It panics when fn is not a function or an argument cannot be resolved.
-func MustCall(c *Container, fn any, overrides ...Override) []reflect.Value {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		panic(ErrNotAFunc{t: fnV.Type()})
+// MustCall resolves fn's arguments from c, applies any overrides attached with
+// WithOverrides, and invokes fn. It panics when fn is not a function or an
+// argument cannot be resolved.
+func MustCall(c *Container, fn any) []reflect.Value {
+	spec, err := EnsureFunc(fn)
+	if err != nil {
+		panic(err)
 	}
-	args := mustGetArgs(c, fnV, overrides...)
+	fnV := reflect.ValueOf(spec.Func)
+	args := mustGetArgs(c, fnV, spec.Overrides...)
 	return fnV.Call(args)
 }
 
 // MustCallErr is like MustCall for a function whose first return value is an
 // error. A returned error is passed through; Must applies only to invocation
 // and dependency-resolution failures.
-func MustCallErr(c *Container, fn any, overrides ...Override) error {
-	out := MustCall(c, fn, overrides...)
+func MustCallErr(c *Container, fn any) error {
+	out := MustCall(c, fn)
 	if len(out) == 0 {
 		// TODO: Maybe leave this to reflect
 		panic("not enough return values")
@@ -34,8 +36,8 @@ func MustCallErr(c *Container, fn any, overrides ...Override) error {
 // MustCallValErr is like MustCall for a function returning a value and an
 // error. A returned error is passed through; Must applies only to invocation
 // and dependency-resolution failures.
-func MustCallValErr(c *Container, fn any, overrides ...Override) (any, error) {
-	out := MustCall(c, fn, overrides...)
+func MustCallValErr(c *Container, fn any) (any, error) {
+	out := MustCall(c, fn)
 	if len(out) < 2 {
 		// TODO: Maybe leave this to reflect
 		panic("not enough return values")
@@ -49,8 +51,8 @@ func MustCallValErr(c *Container, fn any, overrides ...Override) (any, error) {
 
 // MustMakeScopedFunc is like MakeScopedFunc but panics when the wrapper
 // cannot be created.
-func MustMakeScopedFunc[T any](c *Container, fn any, overrides ...Override) T {
-	v, err := MakeScopedFunc[T](c, fn, overrides...)
+func MustMakeScopedFunc[T any](c *Container, fn any) T {
+	v, err := MakeScopedFunc[T](c, fn)
 	if err != nil {
 		panic(err)
 	}
@@ -59,8 +61,8 @@ func MustMakeScopedFunc[T any](c *Container, fn any, overrides ...Override) T {
 
 // MustMakeFuncWithScope is like MakeFuncWithScope but panics when the wrapper
 // cannot be created.
-func MustMakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) T {
-	v, err := MakeFuncWithScope[T](s, fn, overrides...)
+func MustMakeFuncWithScope[T any](s *Container, fn any) T {
+	v, err := MakeFuncWithScope[T](s, fn)
 	if err != nil {
 		panic(err)
 	}
@@ -71,24 +73,23 @@ func MustMakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) T
 // from s for each invocation. Its invocation arguments are registered as
 // scoped values in s. The caller owns s and is responsible for closing it.
 // T must be a function type compatible with the generated wrapper.
-func MakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) (v T, err error) {
-	if reflect.TypeOf(fn).Kind() != reflect.Func {
-		err = NewErrNotAFunc(reflect.TypeOf(fn))
+func MakeFuncWithScope[T any](s *Container, fn any) (v T, err error) {
+	spec, err := EnsureFunc(fn)
+	if err != nil {
 		return
 	}
-
-	fnV := reflect.ValueOf(fn)
+	fnV := reflect.ValueOf(spec.Func)
 
 	wrapped := reflect.MakeFunc(reflect.TypeFor[T](), func(args []reflect.Value) (results []reflect.Value) {
 		for _, arg := range args {
-			config, err := createScopedProvider(Value(arg.Interface()), overrides...)
+			config, err := createScopedProvider(Value(arg.Interface()))
 			if err != nil {
 				panic(err)
 			}
 			appendToSliceInMap(s.providers, arg.Type(), config)
 		}
 
-		deps := mustGetArgs(s, fnV, overrides...)
+		deps := mustGetArgs(s, fnV, spec.Overrides...)
 		return fnV.Call(deps)
 	})
 
@@ -104,9 +105,9 @@ func MakeFuncWithScope[T any](s *Container, fn any, overrides ...Override) (v T,
 // each invocation. Its invocation arguments are registered as scoped values,
 // then fn is called with dependencies resolved from that scope. T must be a
 // function type compatible with the generated wrapper.
-func MakeScopedFunc[T any](c *Container, fn any, overrides ...Override) (v T, err error) {
-	if reflect.TypeOf(fn).Kind() != reflect.Func {
-		err = NewErrNotAFunc(reflect.TypeOf(fn))
+func MakeScopedFunc[T any](c *Container, fn any) (v T, err error) {
+	spec, err := EnsureFunc(fn)
+	if err != nil {
 		return
 	}
 
@@ -114,7 +115,7 @@ func MakeScopedFunc[T any](c *Container, fn any, overrides ...Override) (v T, er
 		s := c.CreateScope()
 		defer s.Close()
 
-		fn := MustMakeFuncWithScope[T](s, fn, overrides...)
+		fn := MustMakeFuncWithScope[T](s, spec)
 		return reflect.ValueOf(fn).Call(args)
 	})
 

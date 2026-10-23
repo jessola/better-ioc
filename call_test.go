@@ -95,11 +95,11 @@ func TestMakeScopedFunc(t *testing.T) {
 	scopes := []*Container{}
 
 	assert.NoError(c.AddScoped[int](Value(42)))
-	fn, err := MakeScopedFunc[makeScopedFunc](c, func(request string, value int, scope *Container) string {
+	fn, err := MakeScopedFunc[makeScopedFunc](c, WithOverrides(func(request string, value any, scope *Container) string {
 		assert.Equal(42, value)
 		scopes = append(scopes, scope)
 		return request
-	})
+	}, Provide[int](1)))
 	assert.NoError(err)
 
 	assert.Equal("first", fn("first"))

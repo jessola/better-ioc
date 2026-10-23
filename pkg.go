@@ -10,36 +10,36 @@ func CreateScope() *Container {
 }
 
 // AddSingleton registers fn as a singleton provider for T in DefaultContainer.
-func AddSingleton[T any](fn any, overrides ...Override) error {
-	return DefaultContainer.AddSingleton[T](fn, overrides...)
+func AddSingleton[T any](fn any) error {
+	return DefaultContainer.AddSingleton[T](fn)
 }
 
 // AddNamedSingleton registers fn as a named singleton provider for T in
 // DefaultContainer.
-func AddNamedSingleton[T any](name string, fn any, overrides ...Override) error {
-	return DefaultContainer.AddNamedSingleton[T](name, fn, overrides...)
+func AddNamedSingleton[T any](name string, fn any) error {
+	return DefaultContainer.AddNamedSingleton[T](name, fn)
 }
 
 // AddScoped registers fn as a scoped provider for T in DefaultContainer.
-func AddScoped[T any](fn any, overrides ...Override) error {
-	return DefaultContainer.AddScoped[T](fn, overrides...)
+func AddScoped[T any](fn any) error {
+	return DefaultContainer.AddScoped[T](fn)
 }
 
 // AddNamedScoped registers fn as a named scoped provider for T in
 // DefaultContainer.
-func AddNamedScoped[T any](name string, fn any, overrides ...Override) error {
-	return DefaultContainer.AddNamedScoped[T](name, fn, overrides...)
+func AddNamedScoped[T any](name string, fn any) error {
+	return DefaultContainer.AddNamedScoped[T](name, fn)
 }
 
 // AddTransient registers fn as a transient provider for T in DefaultContainer.
-func AddTransient[T any](fn any, overrides ...Override) error {
-	return DefaultContainer.AddTransient[T](fn, overrides...)
+func AddTransient[T any](fn any) error {
+	return DefaultContainer.AddTransient[T](fn)
 }
 
 // AddNamedTransient registers fn as a named transient provider for T in
 // DefaultContainer.
-func AddNamedTransient[T any](name string, fn any, overrides ...Override) error {
-	return DefaultContainer.AddNamedTransient[T](name, fn, overrides...)
+func AddNamedTransient[T any](name string, fn any) error {
+	return DefaultContainer.AddNamedTransient[T](name, fn)
 }
 
 // BindSingleton registers V as a singleton provider for T in DefaultContainer.

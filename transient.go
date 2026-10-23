@@ -7,8 +7,8 @@ import (
 
 // AddTransient registers fn as the provider for T. The provider is evaluated
 // each time T is resolved.
-func (c *Container) AddTransient[T any](fn any, overrides ...Override) error {
-	config, err := createTransientProvider(fn, overrides...)
+func (c *Container) AddTransient[T any](fn any) error {
+	config, err := createTransientProvider(fn)
 	if err != nil {
 		return err
 	}
@@ -18,12 +18,12 @@ func (c *Container) AddTransient[T any](fn any, overrides ...Override) error {
 
 // AddNamedTransient registers fn as a named transient provider for T. It also
 // registers the provider for ordinary type-based resolution of T.
-func (c *Container) AddNamedTransient[T any](name string, fn any, overrides ...Override) error {
+func (c *Container) AddNamedTransient[T any](name string, fn any) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrNameCannotBeBlank
 	}
 
-	config, err := createTransientProvider(fn, overrides...)
+	config, err := createTransientProvider(fn)
 	if err != nil {
 		return err
 	}
@@ -38,15 +38,16 @@ func (c *Container) AddNamedTransient[T any](name string, fn any, overrides ...O
 	return nil
 }
 
-func createTransientProvider(fn any, overrides ...Override) (providerConfig, error) {
-	fnV := reflect.ValueOf(fn)
-	if fnV.Type().Kind() != reflect.Func {
-		return providerConfig{}, ErrNotAFunc{t: fnV.Type()}
+func createTransientProvider(fn any) (providerConfig, error) {
+	spec, err := EnsureFunc(fn)
+	if err != nil {
+		return providerConfig{}, err
 	}
+	fnV := reflect.ValueOf(spec.Func)
 
 	config := providerConfig{
 		Create: func(c *Container) any {
-			args := mustGetArgs(c, fnV, overrides...)
+			args := mustGetArgs(c, fnV, spec.Overrides...)
 			v := mustCallWithArgs(fnV, args)
 			c.trackValue(v)
 			return v
