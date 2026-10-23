@@ -1,5 +1,13 @@
 package ioc
 
+// Must returns value or panics if err is non-nil.
+func Must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
 // Value returns a provider function that always returns v.
 func Value[T any](v T) func() T {
 	return func() T {

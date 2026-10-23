@@ -440,6 +440,54 @@ MakeFuncWithScope does not create or close the supplied scope; its caller owns
 that lifetime. Its generic function type allows wrappers for any callback
 shape, not only HTTP handlers.
 
+## Middleware
+
+WithMiddleware is a low-level composition primitive for callbacks that need to
+participate in the current dependency scope. It is most useful when middleware
+creates or replaces a dependency for the next callback—for example, a database
+transaction, authenticated identity, or request-local configuration. Ordinary
+logging, recovery, and other framework concerns are usually better served by
+the framework's native middleware.
+
+Middleware receives and returns `any` because Go has no catch-all function
+type. An application chooses a callback shape and keeps every middleware
+compatible with it. For an Echo application, using handlers that return an
+`error` makes `MustCallErr` a natural way to invoke the next callback.
+
+```go
+func transactional(next any) any {
+	return func(c *ioc.Container, db *sqlx.DB, ctx echo.Context) error {
+		tx, err := db.BeginTxx(ctx.Request().Context(), nil)
+		if err != nil {
+			return err // The final handler is not called.
+		}
+
+		c.AddScoped[*sqlx.Tx](ioc.Value(tx))
+		if err := ioc.MustCallErr(c, next); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit() // This is perhaps best left to the actual handler!
+	}
+}
+
+func scopedHandler(fn any, middlewares ...ioc.MiddlewareFunc) echo.HandlerFunc {
+	handler := ioc.Must(ioc.WithMiddleware(fn, middlewares...))
+	return ioc.MustMakeScopedFunc[echo.HandlerFunc](ioc.DefaultContainer, handler)
+}
+```
+
+Register a transactional route during application setup:
+
+```go
+e.POST("/items", scopedHandler(createItem, transactional))
+```
+
+MakeScopedFunc creates a fresh scope for each request. The transactional
+middleware receives that scope, registers the transaction in it, and invokes
+the next callback. A final handler can therefore depend on `*sqlx.Tx` without
+knowing how the transaction was created or finalized.
+
 ### Manual invocation and overrides
 
 Use MustCall when you want to resolve and invoke a function immediately rather
